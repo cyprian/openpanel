@@ -24,6 +24,25 @@ if [ -f "$SELF_HOSTING_DIR/caddy/Caddyfile" ] &&
   mv "$SELF_HOSTING_DIR/caddy/Caddyfile.tmp" "$SELF_HOSTING_DIR/caddy/Caddyfile"
 fi
 
+if [ -f "$SELF_HOSTING_DIR/docker-compose.yml" ] &&
+  ! grep -q "op-ml-storage" "$SELF_HOSTING_DIR/docker-compose.yml"; then
+  echo "Adding persistent ML storage volume to docker-compose.yml"
+  awk '
+    /^  op-api:/ { in_api = 1 }
+    in_api && /^    command:/ {
+      print "    volumes:"
+      print "      - op-ml-storage:/var/lib/openpanel/ml"
+      in_api = 0
+    }
+    { print }
+  ' "$SELF_HOSTING_DIR/docker-compose.yml" > "$SELF_HOSTING_DIR/docker-compose.yml.tmp"
+  mv "$SELF_HOSTING_DIR/docker-compose.yml.tmp" "$SELF_HOSTING_DIR/docker-compose.yml"
+  cat >> "$SELF_HOSTING_DIR/docker-compose.yml" <<'EOF'
+  op-ml-storage:
+    driver: local
+EOF
+fi
+
 echo "Building OpenPanel images from local source"
 docker build -f apps/api/Dockerfile -t lindesvard/openpanel-api:2 .
 docker build -f apps/worker/Dockerfile -t lindesvard/openpanel-worker:2 .
