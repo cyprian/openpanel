@@ -340,6 +340,7 @@ export const zOnboardingProject = z
     website: z.boolean(),
     app: z.boolean(),
     backend: z.boolean(),
+    ml: z.boolean(),
     timezone: z.string().optional(),
   })
   .superRefine((data, ctx) => {
@@ -367,9 +368,10 @@ export const zOnboardingProject = z
     if (
       data.website === false &&
       data.app === false &&
-      data.backend === false
+      data.backend === false &&
+      data.ml === false
     ) {
-      for (const key of ['app', 'backend', 'website']) {
+      for (const key of ['app', 'backend', 'website', 'ml']) {
         ctx.addIssue({
           code: 'custom',
           message: 'At least one type must be selected',
@@ -694,6 +696,7 @@ export type ICreateImport = z.infer<typeof zCreateImport>;
 
 export * from './types.insights';
 export * from './types.validation';
+export * from './ml.validation';
 export * from './track.validation';
 export * from './event-blocklist';
 export * from './chat';

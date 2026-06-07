@@ -1,0 +1,78 @@
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { PageContainer } from '@/components/page-container';
+import { PageHeader } from '@/components/page-header';
+import { useTRPC } from '@/integrations/trpc/react';
+import { createProjectTitle } from '@/utils/title';
+import { useQuery } from '@tanstack/react-query';
+import { Link, createFileRoute } from '@tanstack/react-router';
+import { formatDistanceToNow } from 'date-fns';
+
+export const Route = createFileRoute('/_app/$organizationId/$projectId/ml/runs')({
+  component: Component,
+  head: () => ({
+    meta: [{ title: createProjectTitle('ML Runs') }],
+  }),
+});
+
+function Component() {
+  const { organizationId, projectId } = Route.useParams();
+  const trpc = useTRPC();
+  const runs = useQuery(trpc.ml.runs.queryOptions({ projectId }));
+
+  return (
+    <PageContainer>
+      <PageHeader
+        title="Runs"
+        description="All ML tracking runs in this OpenPanel project."
+        className="mb-8"
+      />
+      <div className="rounded-md border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Run</TableHead>
+              <TableHead>ML Project</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Updated</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(runs.data ?? []).map((run) => (
+              <TableRow key={run.id}>
+                <TableCell>
+                  <Link
+                    className="font-medium hover:underline"
+                    from={Route.fullPath}
+                    to="/$organizationId/$projectId/ml/runs/$runId"
+                    params={{ organizationId, projectId, runId: run.id }}
+                  >
+                    {run.name}
+                  </Link>
+                </TableCell>
+                <TableCell>{run.mlProject.name}</TableCell>
+                <TableCell>{run.status}</TableCell>
+                <TableCell>
+                  {formatDistanceToNow(run.updatedAt, { addSuffix: true })}
+                </TableCell>
+              </TableRow>
+            ))}
+            {runs.data?.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={4} className="text-muted-foreground">
+                  No runs yet.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </PageContainer>
+  );
+}

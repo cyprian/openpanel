@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq';
 
-import { eventBuffer, groupBuffer, profileBackfillBuffer, profileBuffer, replayBuffer, sessionBuffer } from '@openpanel/db';
+import { eventBuffer, groupBuffer, mlMetricBuffer, profileBackfillBuffer, profileBuffer, replayBuffer, sessionBuffer } from '@openpanel/db';
 import type { CronQueuePayload } from '@openpanel/queue';
 
 import { cohortRefreshCronJob } from './cron.cohort-refresh';
@@ -33,6 +33,9 @@ export async function cronJob(job: Job<CronQueuePayload>) {
     }
     case 'flushGroups': {
       return await groupBuffer.tryFlush({ trigger: 'cron' });
+    }
+    case 'flushMlMetrics': {
+      return await mlMetricBuffer.tryFlush({ trigger: 'cron' });
     }
     case 'ping': {
       return await ping();

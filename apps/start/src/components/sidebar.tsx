@@ -45,10 +45,14 @@ export function Sidebar() {
   });
 
   if (projectId && organizationId) {
+    const project = projects.find((item) => item.id === projectId);
     return (
       <SidebarContainer organizations={organizations} projects={projects}>
         <ActionProjectCTAButton />
-        <SidebarProjectMenu dashboards={dashboards} />
+        <SidebarProjectMenu
+          dashboards={dashboards}
+          isMlProject={project?.types?.includes('ml') ?? false}
+        />
       </SidebarContainer>
     );
   }
@@ -67,7 +71,12 @@ export function Sidebar() {
 
 interface SidebarContainerProps {
   organizations: IServiceOrganization[];
-  projects: Array<{ id: string; name: string; organizationId: string }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    organizationId: string;
+    types?: string[];
+  }>;
   children: React.ReactNode;
 }
 

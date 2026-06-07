@@ -6,7 +6,12 @@ import { Link } from '@tanstack/react-router';
 import type { IServiceProject } from '@openpanel/db';
 
 import { cn } from '@/utils/cn';
-import { SettingsIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react';
+import {
+  NetworkIcon,
+  SettingsIcon,
+  TrendingDownIcon,
+  TrendingUpIcon,
+} from 'lucide-react';
 import { FadeIn } from '../fade-in';
 import { SerieIcon } from '../report-chart/common/serie-icon';
 import { Skeleton } from '../skeleton';
@@ -42,7 +47,15 @@ export function ProjectCardSkeleton() {
   );
 }
 
-function ProjectCard({ id, domain, name, organizationId }: IServiceProject) {
+function ProjectCard({
+  id,
+  domain,
+  name,
+  organizationId,
+  types,
+}: IServiceProject) {
+  const isMlProject = types.includes('ml');
+
   return (
     <ProjectCardRoot>
       <Link
@@ -60,10 +73,10 @@ function ProjectCard({ id, domain, name, organizationId }: IServiceProject) {
           </div>
         </div>
         <div className="-mx-4 aspect-[8/1] mb-4">
-          <ProjectChartOuter id={id} />
+          {isMlProject ? <ProjectMlPreview /> : <ProjectChartOuter id={id} />}
         </div>
         <div className="flex flex-1 gap-4 h-9 md:h-4">
-          <ProjectMetrics id={id} />
+          {isMlProject ? <ProjectMlMetrics /> : <ProjectMetrics id={id} />}
         </div>
       </Link>
       <LinkButton
@@ -74,6 +87,15 @@ function ProjectCard({ id, domain, name, organizationId }: IServiceProject) {
         <SettingsIcon size={16} />
       </LinkButton>
     </ProjectCardRoot>
+  );
+}
+
+function ProjectMlPreview() {
+  return (
+    <div className="flex h-full items-center justify-center border-y bg-def-100 text-muted-foreground">
+      <NetworkIcon className="mr-2 size-4" />
+      <span className="font-medium text-sm">ML experiment tracking</span>
+    </div>
   );
 }
 
@@ -98,6 +120,15 @@ function Metric({ value, label, className }: { value: React.ReactNode; label: st
       <div className="text-muted-foreground">{label}</div>
       <span className="font-medium whitespace-nowrap">{value}</span>
     </div>
+  );
+}
+
+function ProjectMlMetrics() {
+  return (
+    <FadeIn className="row flex-wrap gap-3 flex-1">
+      <Metric label="Type" value="ML" />
+      <Metric label="Artifacts" value="Local-first" className="ml-auto" />
+    </FadeIn>
   );
 }
 

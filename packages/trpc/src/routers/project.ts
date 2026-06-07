@@ -9,6 +9,7 @@ import {
   getProjectByIdCached,
   getProjects,
   getProjectWithClients,
+  type ProjectType,
   type Prisma,
 } from '@openpanel/db';
 import { zOnboardingProject, zProjectUpdate } from '@openpanel/validation';
@@ -117,6 +118,12 @@ export const projectRouter = createTRPCRouter({
         throw new TRPCForbiddenError('Only organization admins can create projects');
       }
 
+      const types: ProjectType[] = [];
+      if (input.website) types.push('website');
+      if (input.app) types.push('app');
+      if (input.backend) types.push('backend');
+      if (input.ml) types.push('ml');
+
       const secret = `sec_${crypto.randomBytes(10).toString('hex')}`;
       const data: Prisma.ClientCreateArgs['data'] = {
         organizationId: input.organizationId,
@@ -129,6 +136,7 @@ export const projectRouter = createTRPCRouter({
           id: await getId('project', input.project),
           organizationId: input.organizationId,
           name: input.project,
+          types,
           domain: input.domain,
           cors: input.cors,
           crossDomain: false,

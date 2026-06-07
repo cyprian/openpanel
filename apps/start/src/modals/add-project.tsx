@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
   MonitorIcon,
+  NetworkIcon,
   SaveIcon,
   ServerIcon,
   SmartphoneIcon,
@@ -41,6 +42,7 @@ export default function AddProject() {
       website: false,
       app: false,
       backend: false,
+      ml: false,
     },
   });
   const trpc = useTRPC();
@@ -89,6 +91,11 @@ export default function AddProject() {
     control: form.control,
   });
 
+  const isMl = useWatch({
+    name: 'ml',
+    control: form.control,
+  });
+
   useEffect(() => {
     if (!isWebsite) {
       form.setValue('domain', null);
@@ -98,7 +105,7 @@ export default function AddProject() {
 
   useEffect(() => {
     form.clearErrors();
-  }, [isWebsite, isApp, isBackend]);
+  }, [isWebsite, isApp, isBackend, isMl]);
 
   return (
     <ModalContent>
@@ -132,7 +139,7 @@ export default function AddProject() {
                 render={({ field }) => (
                   <CheckboxItem
                     description="Track events and conversion for your website"
-                    disabled={isApp}
+                    disabled={isApp || isMl}
                     error={form.formState.errors.website?.message}
                     Icon={MonitorIcon}
                     label="Website"
@@ -203,7 +210,7 @@ export default function AddProject() {
                 render={({ field }) => (
                   <CheckboxItem
                     description="Track events and conversion for your app"
-                    disabled={isWebsite}
+                    disabled={isWebsite || isMl}
                     error={form.formState.errors.app?.message}
                     Icon={SmartphoneIcon}
                     label="App"
@@ -217,9 +224,24 @@ export default function AddProject() {
                 render={({ field }) => (
                   <CheckboxItem
                     description="Track events and conversion for your backend / API"
+                    disabled={isMl}
                     error={form.formState.errors.backend?.message}
                     Icon={ServerIcon}
                     label="Backend / API"
+                    {...field}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="ml"
+                render={({ field }) => (
+                  <CheckboxItem
+                    description="Track machine learning experiments, runs, metrics, and artifacts"
+                    disabled={isWebsite || isApp || isBackend}
+                    error={form.formState.errors.ml?.message}
+                    Icon={NetworkIcon}
+                    label="ML"
                     {...field}
                   />
                 )}

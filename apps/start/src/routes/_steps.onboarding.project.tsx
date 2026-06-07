@@ -5,6 +5,7 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import {
   BuildingIcon,
   MonitorIcon,
+  NetworkIcon,
   ServerIcon,
   SmartphoneIcon,
 } from 'lucide-react';
@@ -97,6 +98,7 @@ function Component() {
       website: false,
       app: false,
       backend: false,
+      ml: false,
     },
   });
 
@@ -112,6 +114,11 @@ function Component() {
 
   const isBackend = useWatch({
     name: 'backend',
+    control: form.control,
+  });
+
+  const isMl = useWatch({
+    name: 'ml',
     control: form.control,
   });
 
@@ -139,7 +146,7 @@ function Component() {
 
   useEffect(() => {
     form.clearErrors();
-  }, [isWebsite, isApp, isBackend]);
+  }, [isWebsite, isApp, isBackend, isMl]);
 
   return (
     <form
@@ -275,34 +282,46 @@ function Component() {
         </div>
         <div className="mt-4">
           <Label className="mb-2">What are you tracking?</Label>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             {[
               {
                 key: 'website' as const,
                 label: 'Website',
                 Icon: MonitorIcon,
                 active: isWebsite,
+                disabled: isMl,
               },
               {
                 key: 'app' as const,
                 label: 'App',
                 Icon: SmartphoneIcon,
                 active: isApp,
+                disabled: isMl,
               },
               {
                 key: 'backend' as const,
                 label: 'Backend / API',
                 Icon: ServerIcon,
                 active: isBackend,
+                disabled: isMl,
               },
-            ].map(({ key, label, Icon, active }) => (
+              {
+                key: 'ml' as const,
+                label: 'ML',
+                Icon: NetworkIcon,
+                active: isMl,
+                disabled: isWebsite || isApp || isBackend,
+              },
+            ].map(({ key, label, Icon, active, disabled }) => (
               <button
                 className={cn(
                   'flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors',
                   active
                     ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary/40'
+                    : 'border-border text-muted-foreground hover:border-primary/40',
+                  disabled && 'cursor-not-allowed opacity-50 hover:border-border'
                 )}
+                disabled={disabled}
                 key={key}
                 onClick={() => {
                   form.setValue(key, !active, { shouldValidate: true });
@@ -316,7 +335,8 @@ function Component() {
           </div>
           {(form.formState.errors.website?.message ||
             form.formState.errors.app?.message ||
-            form.formState.errors.backend?.message) && (
+            form.formState.errors.backend?.message ||
+            form.formState.errors.ml?.message) && (
             <p className="mt-2 text-destructive text-sm">
               At least one type must be selected
             </p>

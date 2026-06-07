@@ -12,6 +12,7 @@ const CRON_TYPES = [
   'flushProfileBackfill',
   'flushReplay',
   'flushGroups',
+  'flushMlMetrics',
   'ping',
   'delete',
   'insightsDaily',

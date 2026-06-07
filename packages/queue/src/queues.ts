@@ -134,6 +134,10 @@ export type CronQueuePayloadFlushGroups = {
   type: 'flushGroups';
   payload: undefined;
 };
+export type CronQueuePayloadFlushMlMetrics = {
+  type: 'flushMlMetrics';
+  payload: undefined;
+};
 export type CronQueuePayloadCohortRefresh = {
   type: 'cohortRefresh';
   payload: undefined;
@@ -146,6 +150,7 @@ export type CronQueuePayload =
   | CronQueuePayloadFlushProfileBackfill
   | CronQueuePayloadFlushReplay
   | CronQueuePayloadFlushGroups
+  | CronQueuePayloadFlushMlMetrics
   | CronQueuePayloadPing
   | CronQueuePayloadDelete
   | CronQueuePayloadInsightsDaily

@@ -9,11 +9,13 @@ import {
   ChevronDownIcon,
   CogIcon,
   GanttChartIcon,
+  GitCompareIcon,
   Globe2Icon,
   GridIcon,
   LayersIcon,
   LayoutDashboardIcon,
   LayoutPanelTopIcon,
+  NetworkIcon,
   PlusIcon,
   SearchIcon,
   SparklesIcon,
@@ -39,11 +41,53 @@ import { cn } from '@/utils/cn';
 
 interface SidebarProjectMenuProps {
   dashboards: IServiceDashboards;
+  isMlProject?: boolean;
 }
 
 export default function SidebarProjectMenu({
   dashboards,
+  isMlProject = false,
 }: SidebarProjectMenuProps) {
+  if (isMlProject) {
+    return (
+      <>
+        <SidebarChatComposer />
+        <div className="mb-2 font-medium text-muted-foreground text-sm">
+          Experiments
+        </div>
+        <SidebarLink href={'/'} icon={WallpaperIcon} label="Overview" />
+        <SidebarLink href={'/ml'} icon={NetworkIcon} label="ML Projects" />
+        <SidebarLink href={'/ml/runs'} icon={ChartLineIcon} label="Runs" />
+        <SidebarLink
+          href={'/ml/compare'}
+          icon={GitCompareIcon}
+          label="Compare"
+        />
+        <SidebarLink
+          href={'/dashboards'}
+          icon={LayoutPanelTopIcon}
+          label="Dashboards"
+        />
+        <div className="mt-4 mb-2 font-medium text-muted-foreground text-sm">
+          Manage
+        </div>
+        <SidebarLink
+          exact={false}
+          href={'/settings'}
+          icon={CogIcon}
+          label="Settings"
+        />
+        <SidebarLink
+          exact={false}
+          href={'/notifications'}
+          icon={BellIcon}
+          label="Notifications"
+        />
+        <SidebarLink href={'..'} icon={UndoDotIcon} label="Back to workspace" />
+      </>
+    );
+  }
+
   return (
     <>
       <SidebarChatComposer />

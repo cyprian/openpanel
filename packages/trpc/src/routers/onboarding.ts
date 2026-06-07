@@ -93,6 +93,7 @@ export const onboardingRouter = createTRPCRouter({
       if (input.website) types.push('website');
       if (input.app) types.push('app');
       if (input.backend) types.push('backend');
+      if (input.ml) types.push('ml');
 
       const user = await getUserById(ctx.session.userId);
       const organization = await createOrGetOrganization(input, user);

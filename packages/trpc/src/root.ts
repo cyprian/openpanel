@@ -13,6 +13,7 @@ import { importRouter } from './routers/import';
 import { insightRouter } from './routers/insight';
 import { integrationRouter } from './routers/integration';
 import { notificationRouter } from './routers/notification';
+import { mlRouter } from './routers/ml';
 import { onboardingRouter } from './routers/onboarding';
 import { organizationRouter } from './routers/organization';
 import { overviewRouter } from './routers/overview';
@@ -47,6 +48,7 @@ export const appRouter = createTRPCRouter({
   onboarding: onboardingRouter,
   reference: referenceRouter,
   notification: notificationRouter,
+  ml: mlRouter,
   integration: integrationRouter,
   import: importRouter,
   auth: authRouter,

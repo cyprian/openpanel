@@ -53,6 +53,7 @@ import liveRouter from './routes/live.router';
 import manageRouter from './routes/manage.router';
 import mcpRouter from './routes/mcp.router';
 import miscRouter from './routes/misc.router';
+import mlRouter from './routes/ml.router';
 import oauthRouter from './routes/oauth-callback.router';
 import profileRouter from './routes/profile.router';
 import toolsRouter from './routes/tools.router';
@@ -194,6 +195,7 @@ export async function buildApp(
     instance.register(oauthRouter, { prefix: '/oauth' });
     instance.register(gscCallbackRouter, { prefix: '/gsc' });
     instance.register(miscRouter, { prefix: '/misc' });
+    instance.register(mlRouter, { prefix: '/ml' });
     // Better Agent chat, mounted under /ai/agents/*.
     //
     // The wrapper does three things before delegating to the Better

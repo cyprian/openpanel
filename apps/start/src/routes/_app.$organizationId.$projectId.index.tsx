@@ -1,6 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { NetworkIcon } from 'lucide-react';
 import { LazyComponent } from '@/components/lazy-component';
 import { useRangePageContext } from '@/hooks/use-page-context-helpers';
+import { PageContainer } from '@/components/page-container';
+import { PageHeader } from '@/components/page-header';
 import {
   OverviewFilterButton,
   OverviewFiltersButtons,
@@ -20,6 +23,8 @@ import OverviewTopSources from '@/components/overview/overview-top-sources';
 import OverviewUserJourney from '@/components/overview/overview-user-journey';
 import OverviewWeeklyTrends from '@/components/overview/overview-weekly-trends';
 import { createProjectTitle, PAGE_TITLES } from '@/utils/title';
+import { useTRPC } from '@/integrations/trpc/react';
+import { useSuspenseQuery } from '@tanstack/react-query';
 
 export const Route = createFileRoute('/_app/$organizationId/$projectId/')({
   component: ProjectDashboard,
@@ -36,6 +41,19 @@ export const Route = createFileRoute('/_app/$organizationId/$projectId/')({
 
 function ProjectDashboard() {
   const { projectId } = Route.useParams();
+  const trpc = useTRPC();
+  const { data: project } = useSuspenseQuery(
+    trpc.project.getProjectWithClients.queryOptions({ projectId }),
+  );
+
+  if (project?.types.includes('ml')) {
+    return <MlProjectOverview projectName={project.name} />;
+  }
+
+  return <AnalyticsProjectOverview projectId={projectId} />;
+}
+
+function AnalyticsProjectOverview({ projectId }: { projectId: string }) {
   useRangePageContext('overview');
   return (
     <div>
@@ -72,5 +90,30 @@ function ProjectDashboard() {
         </LazyComponent>
       </div>
     </div>
+  );
+}
+
+function MlProjectOverview({ projectName }: { projectName: string }) {
+  return (
+    <PageContainer>
+      <PageHeader
+        title={projectName}
+        description="ML experiment tracking"
+        className="mb-8"
+      />
+      <div className="rounded-md border bg-card p-8">
+        <div className="flex items-center gap-3">
+          <div className="center-center size-10 rounded-md bg-def-200">
+            <NetworkIcon className="size-5" />
+          </div>
+          <div>
+            <div className="font-medium">ML project</div>
+            <div className="text-muted-foreground text-sm">
+              Runs, metrics, images, and artifacts will live here.
+            </div>
+          </div>
+        </div>
+      </div>
+    </PageContainer>
   );
 }
