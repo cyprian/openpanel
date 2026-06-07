@@ -1,7 +1,10 @@
+import base64
 import json
+import mimetypes
 import os
+from pathlib import Path
 import urllib.request
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 
 class OpenPanelError(RuntimeError):
@@ -46,6 +49,55 @@ class Run:
         )
         self._step = selected_step + 1
         return result
+
+    def log_image(
+        self,
+        image: Union[str, Path, bytes],
+        *,
+        kind: str = "prediction",
+        step: Optional[int] = None,
+        epoch: Optional[int] = None,
+        caption: Optional[str] = None,
+        filename: Optional[str] = None,
+        content_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        resolved_filename = filename
+        resolved_content_type = content_type
+        if isinstance(image, (str, Path)):
+            path = Path(image)
+            image_bytes = path.read_bytes()
+            resolved_filename = resolved_filename or path.name
+            guessed_type, _ = mimetypes.guess_type(path.name)
+            resolved_content_type = resolved_content_type or guessed_type
+        else:
+            image_bytes = image
+
+        if resolved_content_type not in {"image/png", "image/jpeg", "image/webp"}:
+            raise OpenPanelError("log_image supports PNG, JPEG, and WebP images")
+
+        selected_step = self._step if step is None else step
+        payload: Dict[str, Any] = {
+            "kind": kind,
+            "step": selected_step,
+            "image": base64.b64encode(image_bytes).decode("ascii"),
+            "contentType": resolved_content_type,
+            "metadata": metadata or {},
+        }
+        if epoch is not None:
+            payload["epoch"] = epoch
+        if caption is not None:
+            payload["caption"] = caption
+        if resolved_filename is not None:
+            payload["filename"] = resolved_filename
+
+        return _request(
+            "POST",
+            f"{self.api_url}/ml/runs/{self.id}/images",
+            payload,
+            self.client_id,
+            self.client_secret,
+        )
 
     def finish(self, status: str = "finished") -> Dict[str, Any]:
         return _request(

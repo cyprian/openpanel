@@ -50,5 +50,25 @@ export const zMlMetricLog = z.object({
   metrics: z.record(z.string().min(1), z.number().finite()),
 });
 
+export const zMlImageKind = z.enum([
+  'input',
+  'ground_truth',
+  'prediction',
+  'error_map',
+]);
+
+export const zMlImageLog = z.object({
+  kind: zMlImageKind.default('prediction'),
+  step: z.number().int().nonnegative().optional(),
+  epoch: z.number().int().nonnegative().nullish(),
+  caption: z.string().nullish(),
+  filename: z.string().min(1).optional(),
+  contentType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
+  image: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
 export type IMlRunStatus = z.infer<typeof zMlRunStatus>;
 export type IMlMetricLog = z.infer<typeof zMlMetricLog>;
+export type IMlImageKind = z.infer<typeof zMlImageKind>;
+export type IMlImageLog = z.infer<typeof zMlImageLog>;

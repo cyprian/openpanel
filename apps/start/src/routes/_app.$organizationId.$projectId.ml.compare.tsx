@@ -2,6 +2,11 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MlStatusBadge } from '@/components/ml/status-badge';
 import {
+  ChartTooltipContainer,
+  ChartTooltipHeader,
+  ChartTooltipItem,
+} from '@/components/charts/chart-tooltip';
+import {
   Table,
   TableBody,
   TableCell,
@@ -11,11 +16,22 @@ import {
 } from '@/components/ui/table';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
+import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
 import { useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  type TooltipProps,
+} from 'recharts';
 
 export const Route = createFileRoute(
   '/_app/$organizationId/$projectId/ml/compare',
@@ -61,6 +77,13 @@ function Component() {
   const metadataKeys = getUniqueKeys(
     selectedRuns.map((run) => normalizeRecord(run.metadata))
   );
+  const selectedMetricValues = selectedRuns.map((run) =>
+    normalizeNumberRecord(run.summary)
+  );
+  const bestRunId = selectedMetric
+    ? getBestRunId(selectedMetric, selectedMetricValues, selectedRuns)
+    : null;
+  const bestRun = selectedRuns.find((run) => run.id === bestRunId);
 
   return (
     <PageContainer>
@@ -111,10 +134,16 @@ function Component() {
         <section className="rounded-md border bg-card p-4">
           <div className="mb-4 row gap-2">
             <div className="font-medium">Metric overlay</div>
+            {bestRun && (
+              <Badge className="ml-2" variant="success">
+                Best final: {bestRun.name}
+              </Badge>
+            )}
             <select
               className="ml-auto rounded-md border bg-background px-2 py-1 text-sm"
               value={selectedMetric}
               onChange={(event) => setMetric(event.target.value)}
+              disabled={(metricNames.data ?? []).length === 0}
             >
               {(metricNames.data ?? []).map((item) => (
                 <option key={item.metric} value={item.metric}>
@@ -123,11 +152,10 @@ function Component() {
               ))}
             </select>
           </div>
-          <CompareMetricSvg
+          <CompareMetricChart
             data={series.data ?? []}
-            runNames={Object.fromEntries(
-              selectedRuns.map((run) => [run.id, run.name])
-            )}
+            metric={selectedMetric}
+            runs={selectedRuns}
           />
         </section>
       </div>
@@ -221,48 +249,27 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
   );
 }
 
-function CompareMetricSvg({
+function CompareMetricChart({
   data,
-  runNames,
+  metric,
+  runs,
 }: {
   data: Array<{ run_id: string; step: number; value: number }>;
-  runNames: Record<string, string>;
+  metric: string;
+  runs: Array<{ id: string; name: string }>;
 }) {
-  const { lines, names } = useMemo(() => {
-    if (data.length === 0) {
-      return { lines: [], names: [] };
-    }
-    const width = 720;
-    const height = 260;
-    const minStep = Math.min(...data.map((item) => item.step));
-    const maxStep = Math.max(...data.map((item) => item.step));
-    const minValue = Math.min(...data.map((item) => item.value));
-    const maxValue = Math.max(...data.map((item) => item.value));
-    const stepRange = Math.max(maxStep - minStep, 1);
-    const valueRange = Math.max(maxValue - minValue, 1);
-    const byRun = new Map<string, typeof data>();
-
+  const chartData = useMemo(() => {
+    const rows = new Map<number, { step: number } & Record<string, number>>();
     for (const item of data) {
-      byRun.set(item.run_id, [...(byRun.get(item.run_id) ?? []), item]);
+      const row = rows.get(item.step) ?? { step: item.step };
+      row[item.run_id] = item.value;
+      rows.set(item.step, row);
     }
 
-    return {
-      lines: Array.from(byRun.entries()).map(([runId, values], index) => ({
-        runId,
-        color: COLORS[index % COLORS.length],
-        points: values
-          .map((item) => {
-            const x = ((item.step - minStep) / stepRange) * width;
-            const y = height - ((item.value - minValue) / valueRange) * height;
-            return `${x},${y}`;
-          })
-          .join(' '),
-      })),
-      names: Array.from(byRun.keys()),
-    };
+    return [...rows.values()].sort((a, b) => a.step - b.step);
   }, [data]);
 
-  if (lines.length === 0) {
+  if (chartData.length === 0 || runs.length === 0) {
     return (
       <div className="center-center h-[280px] text-muted-foreground text-sm">
         No chart data yet.
@@ -272,37 +279,121 @@ function CompareMetricSvg({
 
   return (
     <div>
-      <svg
-        className="h-[280px] w-full overflow-visible"
-        viewBox="0 0 720 260"
-        role="img"
-        aria-label="Compared metric series"
-      >
-        {lines.map((line) => (
-          <polyline
-            key={line.runId}
-            points={line.points}
-            fill="none"
-            stroke={line.color}
-            strokeWidth="3"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-      </svg>
+      <div className="h-[340px]">
+        <ResponsiveContainer height="100%" width="100%">
+          <LineChart
+            data={chartData}
+            margin={{ top: 12, right: 20, bottom: 28, left: 12 }}
+          >
+            <CartesianGrid
+              className="stroke-border"
+              horizontal
+              strokeDasharray="3 3"
+              vertical={false}
+            />
+            <XAxis
+              {...X_AXIS_STYLE_PROPS}
+              dataKey="step"
+              label={{
+                value: 'Step',
+                position: 'insideBottom',
+                offset: -16,
+                className: 'fill-muted-foreground font-mono text-[10px]',
+              }}
+              type="number"
+            />
+            <YAxis
+              axisLine={false}
+              className="font-mono"
+              label={{
+                value: metric,
+                angle: -90,
+                position: 'insideLeft',
+                className: 'fill-muted-foreground font-mono text-[10px]',
+              }}
+              tickFormatter={formatAxisNumber}
+              tickLine={false}
+              width={64}
+            />
+            <Tooltip
+              content={<CompareMetricTooltip metric={metric} />}
+              cursor={{ stroke: COLORS[0], strokeDasharray: '4 4' }}
+            />
+            {runs.map((run, index) => {
+              const color = COLORS[index % COLORS.length];
+              return (
+                <Line
+                  activeDot={{
+                    r: 5,
+                    fill: color,
+                    stroke: 'var(--background)',
+                    strokeWidth: 2,
+                  }}
+                  connectNulls
+                  dataKey={run.id}
+                  dot={{
+                    r: 2,
+                    fill: color,
+                    stroke: color,
+                    strokeWidth: 1,
+                  }}
+                  isAnimationActive={false}
+                  key={run.id}
+                  name={run.name}
+                  stroke={color}
+                  strokeWidth={2.5}
+                  type="monotone"
+                />
+              );
+            })}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
       <div className="mt-3 row flex-wrap gap-3 text-sm">
-        {names.map((runId, index) => (
-          <div key={runId} className="row gap-2">
+        {runs.map((run, index) => (
+          <div key={run.id} className="row gap-2">
             <span
               className="h-2.5 w-2.5 rounded-full"
               style={{ backgroundColor: COLORS[index % COLORS.length] }}
             />
-            <span className="text-muted-foreground">
-              {runNames[runId] ?? runId}
-            </span>
+            <span className="text-muted-foreground">{run.name}</span>
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+function CompareMetricTooltip({
+  active,
+  payload,
+  metric,
+}: TooltipProps<number, string> & { metric: string }) {
+  const step = payload?.[0]?.payload?.step as number | undefined;
+
+  if (!active || step === undefined || !payload?.length) {
+    return null;
+  }
+
+  return (
+    <ChartTooltipContainer>
+      <ChartTooltipHeader>
+        <div className="font-medium">Step {step}</div>
+      </ChartTooltipHeader>
+      {payload
+        .filter((item) => typeof item.value === 'number')
+        .map((item) => (
+          <ChartTooltipItem
+            color={item.color ?? COLORS[0]}
+            key={`${item.dataKey}-${item.name}`}
+          >
+            <div className="flex justify-between gap-8 font-medium font-mono">
+              <span>{item.name ?? metric}</span>
+              <span>{formatNumber(item.value as number)}</span>
+            </div>
+          </ChartTooltipItem>
+        ))}
+    </ChartTooltipContainer>
   );
 }
 
@@ -350,7 +441,7 @@ function getBestRunId(
 
 function formatValue(value: unknown) {
   if (typeof value === 'number') {
-    return Number.isInteger(value) ? value.toString() : value.toFixed(4);
+    return formatNumber(value);
   }
   if (typeof value === 'string') {
     return value;
@@ -362,4 +453,24 @@ function formatValue(value: unknown) {
     return '-';
   }
   return JSON.stringify(value);
+}
+
+function formatNumber(value: number) {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(4);
+}
+
+function formatAxisNumber(value: number) {
+  if (Math.abs(value) >= 1000) {
+    return value.toExponential(1);
+  }
+
+  if (Number.isInteger(value)) {
+    return value.toString();
+  }
+
+  if (Math.abs(value) < 0.01) {
+    return value.toExponential(1);
+  }
+
+  return value.toFixed(3);
 }

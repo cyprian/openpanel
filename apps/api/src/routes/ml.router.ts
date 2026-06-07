@@ -1,9 +1,11 @@
 import type { FastifyPluginAsyncZodOpenApi } from 'fastify-zod-openapi';
 import {
   createRun,
+  logImage,
   logMetrics,
   updateRun,
   zCreateMlRun,
+  zLogMlImage,
   zLogMlMetrics,
   zUpdateMlRun,
 } from '@/controllers/ml.controller';
@@ -55,6 +57,18 @@ const mlRouter: FastifyPluginAsyncZodOpenApi = async (fastify) => {
       description: 'Log scalar metrics for an ML tracking run.',
     },
     handler: logMetrics,
+  });
+
+  fastify.route({
+    method: 'POST',
+    url: '/runs/:runId/images',
+    schema: {
+      params,
+      body: zLogMlImage,
+      tags: ['ML'],
+      description: 'Log an image for an ML tracking run.',
+    },
+    handler: logImage,
   });
 };
 

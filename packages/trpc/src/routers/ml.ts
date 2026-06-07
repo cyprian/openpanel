@@ -7,6 +7,7 @@ import {
   getMlMetricSeries,
   getMlProjectById,
   getMlRunById,
+  listMlImagesWithData,
   listMlProjects,
   listMlRuns,
   logMlMetrics,
@@ -113,4 +114,15 @@ export const mlRouter = createTRPCRouter({
       })
     )
     .query(({ input }) => getMlMetricSeries(input)),
+
+  images: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        runId: z.string(),
+        kind: z.string().optional(),
+        limit: z.number().int().positive().max(100).default(60),
+      })
+    )
+    .query(({ input }) => listMlImagesWithData(input)),
 });

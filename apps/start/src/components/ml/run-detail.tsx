@@ -54,6 +54,10 @@ export function MlRunDetail({
     }),
     enabled: !!selectedMetric,
   });
+  const images = useQuery({
+    ...trpc.ml.images.queryOptions({ projectId, runId, limit: 24 }),
+    enabled: !!run.data,
+  });
   const summary = normalizeNumberRecord(run.data?.summary);
   const config = normalizeRecord(run.data?.config);
   const metadata = normalizeRecord(run.data?.metadata);
@@ -150,6 +154,7 @@ export function MlRunDetail({
           <MetricChart data={series.data ?? []} metric={selectedMetric} />
         </section>
       </div>
+      <ImageGallery images={images.data ?? []} />
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <JsonPanel title="Config" value={config} emptyText="No config logged." />
         <JsonPanel
@@ -159,6 +164,84 @@ export function MlRunDetail({
         />
       </div>
     </PageContainer>
+  );
+}
+
+function ImageGallery({
+  images,
+}: {
+  images: Array<{
+    id: string;
+    kind: string;
+    step: number | null;
+    epoch: number | null;
+    caption: string | null;
+    filename: string;
+    width: number | null;
+    height: number | null;
+    dataUrl: string;
+  }>;
+}) {
+  return (
+    <section className="mt-4 rounded-md border bg-card p-4">
+      <div className="mb-4 row gap-2">
+        <div className="font-medium">Images</div>
+        {images.length > 0 && (
+          <Badge variant="outline">{images.length} latest</Badge>
+        )}
+      </div>
+      {images.length === 0 ? (
+        <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
+          No images have been logged for this run yet.
+        </div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {images.map((image) => (
+            <article
+              className="overflow-hidden rounded-md border bg-background"
+              key={image.id}
+            >
+              <div className="aspect-square bg-def-100">
+                {image.dataUrl ? (
+                  <img
+                    alt={image.caption || image.filename}
+                    className="h-full w-full object-contain"
+                    src={image.dataUrl}
+                  />
+                ) : (
+                  <div className="center-center h-full text-muted-foreground text-sm">
+                    Missing file
+                  </div>
+                )}
+              </div>
+              <div className="col gap-2 p-3">
+                <div className="row gap-2">
+                  <Badge variant="outline">{formatImageKind(image.kind)}</Badge>
+                  {image.step !== null && (
+                    <span className="text-muted-foreground text-xs">
+                      Step {image.step}
+                    </span>
+                  )}
+                  {image.epoch !== null && (
+                    <span className="text-muted-foreground text-xs">
+                      Epoch {image.epoch}
+                    </span>
+                  )}
+                </div>
+                <div className="truncate font-medium text-sm">
+                  {image.caption || image.filename}
+                </div>
+                {image.width && image.height && (
+                  <div className="text-muted-foreground text-xs">
+                    {image.width} x {image.height}
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -358,4 +441,11 @@ function formatAxisNumber(value: number) {
   }
 
   return value.toFixed(3);
+}
+
+function formatImageKind(kind: string) {
+  return kind
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }

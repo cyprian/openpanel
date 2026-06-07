@@ -1,9 +1,26 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import sqlstring from 'sqlstring';
 import { chQuery, TABLE_NAMES } from '../clickhouse/client';
 import { db } from '../prisma-client';
 import { mlMetricBuffer } from '../buffers';
 
 export type MlRunSummary = Record<string, number>;
+
+export const ML_IMAGE_STORAGE_PROVIDER_LOCAL = 'local';
+export const ML_IMAGE_STORAGE_ROOT =
+  process.env.ML_STORAGE_DIR || '/var/lib/openpanel/ml';
+
+export function getMlImageStoragePath(storageKey: string) {
+  const storageRoot = path.resolve(ML_IMAGE_STORAGE_ROOT);
+  const filePath = path.resolve(storageRoot, storageKey);
+  const relativePath = path.relative(storageRoot, filePath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error('Invalid ML image storage key');
+  }
+
+  return filePath;
+}
 
 export async function listMlProjects(projectId: string) {
   return db.mlProject.findMany({
@@ -369,5 +386,110 @@ export async function getMlMetricSeries(input: {
        AND run_id IN (${runIds})
        AND metric = ${sqlstring.escape(input.metric)}
      ORDER BY step ASC, created_at ASC`
+  );
+}
+
+export async function createMlImage(input: {
+  projectId: string;
+  runId: string;
+  kind: string;
+  step?: number;
+  epoch?: number | null;
+  caption?: string | null;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  width?: number | null;
+  height?: number | null;
+  storageProvider?: string;
+  storageKey: string;
+  url?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const run = await db.mlRun.findFirstOrThrow({
+    where: {
+      id: input.runId,
+      projectId: input.projectId,
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      mlProjectId: true,
+      organizationId: true,
+    },
+  });
+
+  return db.mlImage.create({
+    data: {
+      projectId: input.projectId,
+      organizationId: run.organizationId,
+      mlProjectId: run.mlProjectId,
+      runId: run.id,
+      kind: input.kind,
+      step: input.step,
+      epoch: input.epoch,
+      caption: input.caption,
+      filename: input.filename,
+      contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
+      width: input.width,
+      height: input.height,
+      storageProvider: input.storageProvider ?? ML_IMAGE_STORAGE_PROVIDER_LOCAL,
+      storageKey: input.storageKey,
+      url: input.url ?? `ml://${input.storageProvider ?? ML_IMAGE_STORAGE_PROVIDER_LOCAL}/${input.storageKey}`,
+      metadata: input.metadata ?? {},
+    },
+  });
+}
+
+export async function listMlImages(input: {
+  projectId: string;
+  runId: string;
+  kind?: string;
+  limit?: number;
+}) {
+  return db.mlImage.findMany({
+    where: {
+      projectId: input.projectId,
+      runId: input.runId,
+      kind: input.kind,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+    take: Math.min(input.limit ?? 60, 100),
+  });
+}
+
+export async function listMlImagesWithData(input: {
+  projectId: string;
+  runId: string;
+  kind?: string;
+  limit?: number;
+}) {
+  const images = await listMlImages(input);
+
+  return Promise.all(
+    images.map(async (image) => {
+      if (image.storageProvider !== ML_IMAGE_STORAGE_PROVIDER_LOCAL) {
+        return {
+          ...image,
+          dataUrl: image.url,
+        };
+      }
+
+      try {
+        const buffer = await readFile(getMlImageStoragePath(image.storageKey));
+        return {
+          ...image,
+          dataUrl: `data:${image.contentType};base64,${buffer.toString('base64')}`,
+        };
+      } catch {
+        return {
+          ...image,
+          dataUrl: '',
+        };
+      }
+    })
   );
 }

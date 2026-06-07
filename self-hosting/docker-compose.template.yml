@@ -92,6 +92,8 @@ services:
   op-api:
     image: lindesvard/openpanel-api:2
     restart: always
+    volumes:
+      - op-ml-storage:/var/lib/openpanel/ml
     command: >
       sh -c "
         echo 'Running migrations...'
@@ -171,4 +173,6 @@ volumes:
   op-proxy-data:
     driver: local
   op-proxy-config:
+    driver: local
+  op-ml-storage:
     driver: local
