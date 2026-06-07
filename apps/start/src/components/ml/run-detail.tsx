@@ -2,7 +2,6 @@ import { MlStatusBadge } from '@/components/ml/status-badge';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { useTRPC } from '@/integrations/trpc/react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -46,15 +45,14 @@ export function MlRunDetail({
     <PageContainer>
       <div className="mb-4">
         {mlProjectId && (
-          <Button size="sm" variant="outline" asChild>
-            <Link
-              to="/$organizationId/$projectId/ml/projects/$mlProjectId"
-              params={{ organizationId, projectId, mlProjectId }}
-            >
-              <ArrowLeftIcon className="size-3.5" />
-              Project runs
-            </Link>
-          </Button>
+          <Link
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-input bg-card px-2 font-medium text-sm transition-all hover:translate-y-[-0.5px] hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            to="/$organizationId/$projectId/ml/projects/$mlProjectId"
+            params={{ organizationId, projectId, mlProjectId }}
+          >
+            <ArrowLeftIcon className="size-3.5" />
+            Project runs
+          </Link>
         )}
       </div>
       <PageHeader
