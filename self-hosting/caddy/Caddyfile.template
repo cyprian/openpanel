@@ -5,6 +5,10 @@ $DOMAIN_NAME {$SSL_CONFIG
         reverse_proxy op-api:3000
     }
 
+    handle /ml* {
+        reverse_proxy op-api:3000
+    }
+
     reverse_proxy /* op-dashboard:3000
 }
 

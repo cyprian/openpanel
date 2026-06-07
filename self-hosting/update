@@ -1,8 +1,42 @@
 #!/bin/bash
+set -euo pipefail
 
+SELF_HOSTING_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SELF_HOSTING_DIR/.." && pwd)"
+
+cd "$REPO_DIR"
 git pull
 
+if [ -f "$SELF_HOSTING_DIR/caddy/Caddyfile" ] &&
+  ! grep -q "handle /ml\\*" "$SELF_HOSTING_DIR/caddy/Caddyfile"; then
+  echo "Adding ML ingestion route to Caddyfile"
+  awk '
+    { print }
+    $0 ~ /handle_path \/api\*/ { in_api = 1 }
+    in_api && $0 ~ /^[[:space:]]*}[[:space:]]*$/ {
+      print ""
+      print "    handle /ml* {"
+      print "        reverse_proxy op-api:3000"
+      print "    }"
+      in_api = 0
+    }
+  ' "$SELF_HOSTING_DIR/caddy/Caddyfile" > "$SELF_HOSTING_DIR/caddy/Caddyfile.tmp"
+  mv "$SELF_HOSTING_DIR/caddy/Caddyfile.tmp" "$SELF_HOSTING_DIR/caddy/Caddyfile"
+fi
+
+echo "Building OpenPanel images from local source"
+docker build -f apps/api/Dockerfile -t lindesvard/openpanel-api:2 .
+docker build -f apps/worker/Dockerfile -t lindesvard/openpanel-worker:2 .
+docker build -f apps/start/Dockerfile -t lindesvard/openpanel-dashboard:2 .
+
+cd "$SELF_HOSTING_DIR"
+
+echo "Pulling infrastructure images"
+docker compose pull op-proxy op-db op-kv op-ch
+
 echo "Updating services"
-docker compose up -d --pull always --remove-orphans
+docker compose up -d --remove-orphans --force-recreate op-api op-worker op-dashboard
+docker compose up -d --remove-orphans
+docker compose up -d --no-deps --force-recreate op-proxy
 
 echo "Done"

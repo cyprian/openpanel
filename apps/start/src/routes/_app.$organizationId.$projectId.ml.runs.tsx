@@ -13,6 +13,7 @@ import { createProjectTitle } from '@/utils/title';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
+import { ArrowRightIcon } from 'lucide-react';
 
 export const Route = createFileRoute('/_app/$organizationId/$projectId/ml/runs')({
   component: Component,
@@ -48,12 +49,12 @@ function Component() {
               <TableRow key={run.id}>
                 <TableCell>
                   <Link
-                    className="font-medium hover:underline"
-                    from={Route.fullPath}
+                    className="inline-flex items-center gap-2 font-medium hover:underline"
                     to="/$organizationId/$projectId/ml/runs/$runId"
                     params={{ organizationId, projectId, runId: run.id }}
                   >
                     {run.name}
+                    <ArrowRightIcon className="size-3.5" />
                   </Link>
                 </TableCell>
                 <TableCell>{run.mlProject.name}</TableCell>
@@ -65,8 +66,14 @@ function Component() {
             ))}
             {runs.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-muted-foreground">
-                  No runs yet.
+                <TableCell colSpan={4} className="py-10 text-center">
+                  <div className="mx-auto max-w-sm">
+                    <div className="font-medium">No runs yet</div>
+                    <p className="mt-1 text-muted-foreground text-sm">
+                      Start a run from the Python SDK and its metrics will show
+                      up here.
+                    </p>
+                  </div>
                 </TableCell>
               </TableRow>
             )}

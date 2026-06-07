@@ -17,16 +17,28 @@ import { popModal } from '.';
 import { ModalContent, ModalHeader } from './Modal/Container';
 import AnimateHeight from '@/components/animate-height';
 import { ButtonContainer } from '@/components/button-container';
-import { CreateClientSuccess } from '@/components/clients/create-client-success';
-import { CheckboxItem } from '@/components/forms/checkbox-item';
 import { InputWithLabel, WithLabel } from '@/components/forms/input-with-label';
 import TagInput from '@/components/forms/tag-input';
 import { Button } from '@/components/ui/button';
 import { useAppParams } from '@/hooks/use-app-params';
 import { handleError, useTRPC } from '@/integrations/trpc/react';
+import { cn } from '@/utils/cn';
 
 const validator = zOnboardingProject;
 type IForm = z.infer<typeof validator>;
+
+function downloadCredentials(client: { id: string; secret: string }) {
+  const blob = new Blob(
+    [`CLIENT_ID=${client.id}\nCLIENT_SECRET=${client.secret}`],
+    { type: 'text/plain' }
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'credentials.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function AddProject() {
   const { organizationId } = useAppParams();
@@ -54,19 +66,24 @@ export default function AddProject() {
         queryClient.invalidateQueries(
           trpc.project.list.queryFilter({ organizationId })
         );
+        popModal();
+        navigate({
+          to: res.types.includes('ml')
+            ? '/$organizationId/$projectId/ml'
+            : '/$organizationId/$projectId',
+          params: {
+            organizationId,
+            projectId: res.id,
+          },
+        });
         toast.success('Project created', {
           description: `${res.name}`,
-          action: {
-            label: 'View project',
-            onClick: () =>
-              navigate({
-                to: '/$organizationId/$projectId',
-                params: {
-                  organizationId,
-                  projectId: res.id,
-                },
-              }),
-          },
+          action: res.client
+            ? {
+                label: 'Save credentials',
+                onClick: () => downloadCredentials(res.client!),
+              }
+            : undefined,
         });
       },
     })
@@ -107,159 +124,159 @@ export default function AddProject() {
     form.clearErrors();
   }, [isWebsite, isApp, isBackend, isMl]);
 
+  const trackingOptions = [
+    {
+      key: 'website' as const,
+      label: 'Website',
+      description: 'Track events and conversion for your website',
+      Icon: MonitorIcon,
+      active: isWebsite,
+      disabled: isApp || isMl,
+    },
+    {
+      key: 'app' as const,
+      label: 'App',
+      description: 'Track events and conversion for your app',
+      Icon: SmartphoneIcon,
+      active: isApp,
+      disabled: isWebsite || isMl,
+    },
+    {
+      key: 'backend' as const,
+      label: 'Backend / API',
+      description: 'Track events and conversion for your backend / API',
+      Icon: ServerIcon,
+      active: isBackend,
+      disabled: isMl,
+    },
+    {
+      key: 'ml' as const,
+      label: 'ML',
+      description: 'Track machine learning experiments, runs, metrics, and artifacts',
+      Icon: NetworkIcon,
+      active: isMl,
+      disabled: isWebsite || isApp || isBackend,
+    },
+  ];
+
   return (
     <ModalContent>
-      {mutation.isSuccess ? (
-        <>
-          <ModalHeader text={'Your project is created'} title="Success" />
-          {mutation.data.client && (
-            <CreateClientSuccess {...mutation.data.client} />
-          )}
-          <ButtonContainer className="justify-end">
-            <Button className="flex-1" onClick={() => popModal()}>
-              Close
-            </Button>
-          </ButtonContainer>
-        </>
-      ) : (
-        <>
-          <ModalHeader title="Create project" />
-          <form className="col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
+      <ModalHeader title="Create project" />
+      <form className="col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
+        <InputWithLabel
+          label="Project name"
+          placeholder="Eg. My music site"
+          {...form.register('project')}
+          error={form.formState.errors.project?.message}
+        />
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          {trackingOptions.map(({ key, label, description, Icon, active, disabled }) => (
+            <Controller
+              control={form.control}
+              key={key}
+              name={key}
+              render={({ field }) => (
+                <button
+                  className={cn(
+                    'flex min-h-28 gap-3 rounded-md border p-4 text-left transition-colors',
+                    active
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border hover:border-primary/40',
+                    disabled && 'cursor-not-allowed opacity-50 hover:border-border'
+                  )}
+                  disabled={disabled}
+                  onClick={() => field.onChange(!field.value)}
+                  type="button"
+                >
+                  <Icon className="mt-0.5 size-5 shrink-0" />
+                  <span className="grid gap-1">
+                    <span className="font-medium">{label}</span>
+                    <span className="text-muted-foreground text-sm">
+                      {description}
+                    </span>
+                  </span>
+                </button>
+              )}
+            />
+          ))}
+        </div>
+        {(form.formState.errors.website?.message ||
+          form.formState.errors.app?.message ||
+          form.formState.errors.backend?.message ||
+          form.formState.errors.ml?.message) && (
+          <p className="text-destructive text-sm">
+            At least one type must be selected
+          </p>
+        )}
+
+        <AnimateHeight open={isWebsite}>
+          <div className="rounded-md border p-4">
             <InputWithLabel
-              label="Project name"
-              placeholder="Eg. My music site"
-              {...form.register('project')}
-              error={form.formState.errors.project?.message}
+              label="Domain"
+              placeholder="Your website address"
+              {...form.register('domain')}
+              className="mb-4"
+              error={form.formState.errors.domain?.message}
+              onBlur={(e) => {
+                const value = e.target.value.trim();
+                if (
+                  value.includes('.') &&
+                  form.getValues().cors.length === 0 &&
+                  !form.formState.errors.domain
+                ) {
+                  form.setValue('cors', [value]);
+                }
+              }}
             />
 
-            <div className="flex flex-col divide-y">
-              <Controller
-                control={form.control}
-                name="website"
-                render={({ field }) => (
-                  <CheckboxItem
-                    description="Track events and conversion for your website"
-                    disabled={isApp || isMl}
-                    error={form.formState.errors.website?.message}
-                    Icon={MonitorIcon}
-                    label="Website"
+            <Controller
+              control={form.control}
+              name="cors"
+              render={({ field }) => (
+                <WithLabel label="Allowed domains">
+                  <TagInput
                     {...field}
-                  >
-                    <AnimateHeight open={isWebsite && !isApp}>
-                      <div className="p-4 pl-14">
-                        <InputWithLabel
-                          label="Domain"
-                          placeholder="Your website address"
-                          {...form.register('domain')}
-                          className="mb-4"
-                          error={form.formState.errors.domain?.message}
-                          onBlur={(e) => {
-                            const value = e.target.value.trim();
-                            if (
-                              value.includes('.') &&
-                              form.getValues().cors.length === 0 &&
-                              !form.formState.errors.domain
-                            ) {
-                              form.setValue('cors', [value]);
-                            }
-                          }}
-                        />
+                    error={form.formState.errors.cors?.message}
+                    onChange={(newValue) => {
+                      field.onChange(
+                        newValue.map((item) => {
+                          const trimmed = item.trim();
+                          if (
+                            trimmed.startsWith('http://') ||
+                            trimmed.startsWith('https://') ||
+                            trimmed === '*'
+                          ) {
+                            return trimmed;
+                          }
+                          return `https://${trimmed}`;
+                        })
+                      );
+                    }}
+                    placeholder="Accept events from these domains"
+                    renderTag={(tag) =>
+                      tag === '*'
+                        ? 'Accept events from any domains'
+                        : tag
+                    }
+                    value={field.value ?? []}
+                  />
+                </WithLabel>
+              )}
+            />
+          </div>
+        </AnimateHeight>
 
-                        <Controller
-                          control={form.control}
-                          name="cors"
-                          render={({ field }) => (
-                            <WithLabel label="Allowed domains">
-                              <TagInput
-                                {...field}
-                                error={form.formState.errors.cors?.message}
-                                onChange={(newValue) => {
-                                  field.onChange(
-                                    newValue.map((item) => {
-                                      const trimmed = item.trim();
-                                      if (
-                                        trimmed.startsWith('http://') ||
-                                        trimmed.startsWith('https://') ||
-                                        trimmed === '*'
-                                      ) {
-                                        return trimmed;
-                                      }
-                                      return `https://${trimmed}`;
-                                    })
-                                  );
-                                }}
-                                placeholder="Accept events from these domains"
-                                renderTag={(tag) =>
-                                  tag === '*'
-                                    ? 'Accept events from any domains'
-                                    : tag
-                                }
-                                value={field.value ?? []}
-                              />
-                            </WithLabel>
-                          )}
-                        />
-                      </div>
-                    </AnimateHeight>
-                  </CheckboxItem>
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="app"
-                render={({ field }) => (
-                  <CheckboxItem
-                    description="Track events and conversion for your app"
-                    disabled={isWebsite || isMl}
-                    error={form.formState.errors.app?.message}
-                    Icon={SmartphoneIcon}
-                    label="App"
-                    {...field}
-                  />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="backend"
-                render={({ field }) => (
-                  <CheckboxItem
-                    description="Track events and conversion for your backend / API"
-                    disabled={isMl}
-                    error={form.formState.errors.backend?.message}
-                    Icon={ServerIcon}
-                    label="Backend / API"
-                    {...field}
-                  />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="ml"
-                render={({ field }) => (
-                  <CheckboxItem
-                    description="Track machine learning experiments, runs, metrics, and artifacts"
-                    disabled={isWebsite || isApp || isBackend}
-                    error={form.formState.errors.ml?.message}
-                    Icon={NetworkIcon}
-                    label="ML"
-                    {...field}
-                  />
-                )}
-              />
-            </div>
-
-            <ButtonContainer className="justify-end">
-              <Button
-                icon={SaveIcon}
-                loading={mutation.isPending}
-                type="submit"
-              >
-                Create project
-              </Button>
-            </ButtonContainer>
-          </form>
-        </>
-      )}
+        <ButtonContainer className="justify-end">
+          <Button
+            icon={SaveIcon}
+            loading={mutation.isPending}
+            type="submit"
+          >
+            Create project
+          </Button>
+        </ButtonContainer>
+      </form>
     </ModalContent>
   );
 }

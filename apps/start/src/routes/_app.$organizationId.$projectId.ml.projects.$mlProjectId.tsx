@@ -13,9 +13,9 @@ import { PageHeader } from '@/components/page-header';
 import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, createFileRoute } from '@tanstack/react-router';
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
-import { PlusIcon } from 'lucide-react';
+import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -32,6 +32,7 @@ function Component() {
   const { organizationId, projectId, mlProjectId } = Route.useParams();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [name, setName] = useState('');
   const project = useQuery(
     trpc.ml.project.queryOptions({ projectId, id: mlProjectId })
@@ -42,10 +43,18 @@ function Component() {
   const createRun = useMutation(
     trpc.ml.createRun.mutationOptions({
       onError: handleErrorToastOptions({}),
-      onSuccess() {
+      onSuccess(run) {
         setName('');
         queryClient.invalidateQueries(trpc.ml.runs.pathFilter());
         toast.success('Run created');
+        navigate({
+          to: '/$organizationId/$projectId/ml/runs/$runId',
+          params: {
+            organizationId,
+            projectId,
+            runId: run.id,
+          },
+        });
       },
     })
   );
@@ -96,12 +105,12 @@ function Component() {
               <TableRow key={run.id}>
                 <TableCell>
                   <Link
-                    className="font-medium hover:underline"
-                    from={Route.fullPath}
+                    className="inline-flex items-center gap-2 font-medium hover:underline"
                     to="/$organizationId/$projectId/ml/runs/$runId"
                     params={{ organizationId, projectId, runId: run.id }}
                   >
                     {run.name}
+                    <ArrowRightIcon className="size-3.5" />
                   </Link>
                 </TableCell>
                 <TableCell>{run.status}</TableCell>
@@ -113,8 +122,14 @@ function Component() {
             ))}
             {runs.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-muted-foreground">
-                  No runs yet.
+                <TableCell colSpan={4} className="py-10 text-center">
+                  <div className="mx-auto max-w-sm">
+                    <div className="font-medium">No runs yet</div>
+                    <p className="mt-1 text-muted-foreground text-sm">
+                      Create a run above or start one from the Python SDK to see
+                      metrics flow into this project.
+                    </p>
+                  </div>
                 </TableCell>
               </TableRow>
             )}

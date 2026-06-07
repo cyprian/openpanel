@@ -13,9 +13,9 @@ import { PageHeader } from '@/components/page-header';
 import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, createFileRoute } from '@tanstack/react-router';
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
-import { PlusIcon } from 'lucide-react';
+import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -30,15 +30,24 @@ function Component() {
   const { organizationId, projectId } = Route.useParams();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [name, setName] = useState('');
   const projects = useQuery(trpc.ml.projects.queryOptions({ projectId }));
   const createProject = useMutation(
     trpc.ml.createProject.mutationOptions({
       onError: handleErrorToastOptions({}),
-      onSuccess() {
+      onSuccess(project) {
         setName('');
         queryClient.invalidateQueries(trpc.ml.projects.pathFilter());
         toast.success('ML project created');
+        navigate({
+          to: '/$organizationId/$projectId/ml/projects/$mlProjectId',
+          params: {
+            organizationId,
+            projectId,
+            mlProjectId: project.id,
+          },
+        });
       },
     })
   );
@@ -84,12 +93,12 @@ function Component() {
               <TableRow key={item.id}>
                 <TableCell>
                   <Link
-                    className="font-medium hover:underline"
-                    from={Route.fullPath}
+                    className="inline-flex items-center gap-2 font-medium hover:underline"
                     to="/$organizationId/$projectId/ml/projects/$mlProjectId"
                     params={{ organizationId, projectId, mlProjectId: item.id }}
                   >
                     {item.name}
+                    <ArrowRightIcon className="size-3.5" />
                   </Link>
                 </TableCell>
                 <TableCell>{item._count.runs}</TableCell>
@@ -100,8 +109,14 @@ function Component() {
             ))}
             {projects.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={3} className="text-muted-foreground">
-                  No ML projects yet.
+                <TableCell colSpan={3} className="py-10 text-center">
+                  <div className="mx-auto max-w-sm">
+                    <div className="font-medium">No ML projects yet</div>
+                    <p className="mt-1 text-muted-foreground text-sm">
+                      Create one above to group training runs by model, dataset,
+                      or experiment.
+                    </p>
+                  </div>
                 </TableCell>
               </TableRow>
             )}
