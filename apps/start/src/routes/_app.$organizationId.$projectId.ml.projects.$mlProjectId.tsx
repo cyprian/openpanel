@@ -14,7 +14,13 @@ import { PageHeader } from '@/components/page-header';
 import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  useMatchRoute,
+  useNavigate,
+} from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -30,6 +36,20 @@ export const Route = createFileRoute(
 });
 
 function Component() {
+  const matchRoute = useMatchRoute();
+  const isProjectIndexRoute = matchRoute({
+    to: '/$organizationId/$projectId/ml/projects/$mlProjectId',
+    fuzzy: false,
+  });
+
+  if (!isProjectIndexRoute) {
+    return <Outlet />;
+  }
+
+  return <MlProjectRunsIndex />;
+}
+
+function MlProjectRunsIndex() {
   const { organizationId, projectId, mlProjectId } = Route.useParams();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
