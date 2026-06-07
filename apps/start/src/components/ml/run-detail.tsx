@@ -55,7 +55,7 @@ export function MlRunDetail({
     enabled: !!selectedMetric,
   });
   const images = useQuery({
-    ...trpc.ml.images.queryOptions({ projectId, runId, limit: 24 }),
+    ...trpc.ml.images.queryOptions({ projectId, runId, limit: 100 }),
     enabled: !!run.data,
   });
   const summary = normalizeNumberRecord(run.data?.summary);
@@ -167,27 +167,63 @@ export function MlRunDetail({
   );
 }
 
+const IMAGE_KIND_COLUMNS = [
+  'input',
+  'ground_truth',
+  'prediction',
+  'error_map',
+] as const;
+
+type MlRunImage = {
+  id: string;
+  kind: string;
+  step: number | null;
+  epoch: number | null;
+  caption: string | null;
+  filename: string;
+  width: number | null;
+  height: number | null;
+  dataUrl: string;
+};
+
+type ImageGroup = {
+  key: string;
+  step: number | null;
+  epoch: number | null;
+  images: MlRunImage[];
+  byKind: Partial<Record<(typeof IMAGE_KIND_COLUMNS)[number], MlRunImage[]>>;
+};
+
 function ImageGallery({
   images,
 }: {
-  images: Array<{
-    id: string;
-    kind: string;
-    step: number | null;
-    epoch: number | null;
-    caption: string | null;
-    filename: string;
-    width: number | null;
-    height: number | null;
-    dataUrl: string;
-  }>;
+  images: MlRunImage[];
 }) {
+  const [selectedGroupKey, setSelectedGroupKey] = useState('');
+  const groups = useMemo(() => groupImagesByTrainingPoint(images), [images]);
+  const selectedGroup =
+    groups.find((group) => group.key === selectedGroupKey) ?? groups[0];
+  const recentGroups = groups.slice(0, 8);
+
   return (
     <section className="mt-4 rounded-md border bg-card p-4">
-      <div className="mb-4 row gap-2">
-        <div className="font-medium">Images</div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="font-medium">Visual evaluation</div>
         {images.length > 0 && (
           <Badge variant="outline">{images.length} latest</Badge>
+        )}
+        {groups.length > 0 && (
+          <select
+            className="ml-auto rounded-md border bg-background px-2 py-1 text-sm"
+            onChange={(event) => setSelectedGroupKey(event.target.value)}
+            value={selectedGroup?.key ?? ''}
+          >
+            {groups.map((group) => (
+              <option key={group.key} value={group.key}>
+                {formatImageGroupLabel(group)} - {group.images.length} images
+              </option>
+            ))}
+          </select>
         )}
       </div>
       {images.length === 0 ? (
@@ -195,53 +231,99 @@ function ImageGallery({
           No images have been logged for this run yet.
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {images.map((image) => (
-            <article
-              className="overflow-hidden rounded-md border bg-background"
-              key={image.id}
-            >
-              <div className="aspect-square bg-def-100">
-                {image.dataUrl ? (
-                  <img
-                    alt={image.caption || image.filename}
-                    className="h-full w-full object-contain"
-                    src={image.dataUrl}
-                  />
-                ) : (
-                  <div className="center-center h-full text-muted-foreground text-sm">
-                    Missing file
-                  </div>
-                )}
-              </div>
-              <div className="col gap-2 p-3">
-                <div className="row gap-2">
-                  <Badge variant="outline">{formatImageKind(image.kind)}</Badge>
-                  {image.step !== null && (
-                    <span className="text-muted-foreground text-xs">
-                      Step {image.step}
-                    </span>
-                  )}
-                  {image.epoch !== null && (
-                    <span className="text-muted-foreground text-xs">
-                      Epoch {image.epoch}
-                    </span>
-                  )}
-                </div>
-                <div className="truncate font-medium text-sm">
-                  {image.caption || image.filename}
-                </div>
-                {image.width && image.height && (
-                  <div className="text-muted-foreground text-xs">
-                    {image.width} x {image.height}
-                  </div>
-                )}
-              </div>
-            </article>
-          ))}
+        <div className="col gap-4">
+          {selectedGroup && (
+            <VisualComparisonRow group={selectedGroup} size="large" />
+          )}
+          {recentGroups.length > 1 && (
+            <div className="col gap-3">
+              <div className="font-medium text-sm">Recent snapshots</div>
+              {recentGroups.map((group) => (
+                <VisualComparisonRow group={group} key={group.key} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>
+  );
+}
+
+function VisualComparisonRow({
+  group,
+  size = 'compact',
+}: {
+  group: ImageGroup;
+  size?: 'compact' | 'large';
+}) {
+  return (
+    <article className="rounded-md border bg-background p-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="font-medium text-sm">{formatImageGroupLabel(group)}</div>
+        <Badge variant="outline">{group.images.length} images</Badge>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {IMAGE_KIND_COLUMNS.map((kind) => (
+          <ImageKindCell
+            image={group.byKind[kind]?.[0]}
+            key={kind}
+            kind={kind}
+            size={size}
+            total={group.byKind[kind]?.length ?? 0}
+          />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function ImageKindCell({
+  image,
+  kind,
+  size,
+  total,
+}: {
+  image?: MlRunImage;
+  kind: (typeof IMAGE_KIND_COLUMNS)[number];
+  size: 'compact' | 'large';
+  total: number;
+}) {
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <div className={size === 'large' ? 'h-56 bg-def-100' : 'h-36 bg-def-100'}>
+        {image?.dataUrl ? (
+          <img
+            alt={image.caption || image.filename}
+            className="h-full w-full object-contain"
+            src={image.dataUrl}
+          />
+        ) : (
+          <div className="center-center h-full text-muted-foreground text-sm">
+            {image ? 'Missing file' : 'No image'}
+          </div>
+        )}
+      </div>
+      <div className="col gap-2 p-3">
+        <div className="row gap-2">
+          <Badge variant="outline">{formatImageKind(kind)}</Badge>
+          {total > 1 && <Badge variant="outline">+{total - 1}</Badge>}
+        </div>
+        {image ? (
+          <>
+            <div className="truncate font-medium text-sm">
+              {image.caption || image.filename}
+            </div>
+            {image.width && image.height && (
+              <div className="text-muted-foreground text-xs">
+                {image.width} x {image.height}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-muted-foreground text-xs">Not logged</div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -423,6 +505,43 @@ function normalizeNumberRecord(value: unknown): Record<string, number> {
   return result;
 }
 
+function groupImagesByTrainingPoint(images: MlRunImage[]): ImageGroup[] {
+  const groups = new Map<string, ImageGroup>();
+
+  for (const image of images) {
+    const key = `${image.epoch ?? 'none'}:${image.step ?? 'none'}`;
+    const group = groups.get(key) ?? {
+      key,
+      step: image.step,
+      epoch: image.epoch,
+      images: [],
+      byKind: {},
+    };
+    group.images.push(image);
+
+    if (isImageKindColumn(image.kind)) {
+      group.byKind[image.kind] = [...(group.byKind[image.kind] ?? []), image];
+    }
+
+    groups.set(key, group);
+  }
+
+  return [...groups.values()].sort((a, b) => {
+    const epochDelta = (b.epoch ?? -1) - (a.epoch ?? -1);
+    if (epochDelta !== 0) {
+      return epochDelta;
+    }
+
+    return (b.step ?? -1) - (a.step ?? -1);
+  });
+}
+
+function isImageKindColumn(
+  kind: string
+): kind is (typeof IMAGE_KIND_COLUMNS)[number] {
+  return IMAGE_KIND_COLUMNS.includes(kind as (typeof IMAGE_KIND_COLUMNS)[number]);
+}
+
 function formatNumber(value: number) {
   return Number.isInteger(value) ? value : value.toFixed(4);
 }
@@ -448,4 +567,16 @@ function formatImageKind(kind: string) {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function formatImageGroupLabel(group: Pick<ImageGroup, 'epoch' | 'step'>) {
+  const parts = [];
+  if (group.epoch !== null) {
+    parts.push(`Epoch ${group.epoch}`);
+  }
+  if (group.step !== null) {
+    parts.push(`Step ${group.step}`);
+  }
+
+  return parts.length > 0 ? parts.join(' - ') : 'Unscoped images';
 }

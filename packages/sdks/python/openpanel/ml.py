@@ -61,7 +61,19 @@ class Run:
         filename: Optional[str] = None,
         content_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        every: Optional[int] = None,
     ) -> Dict[str, Any]:
+        selected_step = max(self._step - 1, 0) if step is None else step
+        if every is not None:
+            if every <= 0:
+                raise OpenPanelError("log_image every must be greater than 0")
+            if selected_step % every != 0:
+                return {
+                    "skipped": True,
+                    "reason": "frequency",
+                    "step": selected_step,
+                }
+
         resolved_filename = filename
         resolved_content_type = content_type
         if isinstance(image, (str, Path)):
@@ -76,7 +88,6 @@ class Run:
         if resolved_content_type not in {"image/png", "image/jpeg", "image/webp"}:
             raise OpenPanelError("log_image supports PNG, JPEG, and WebP images")
 
-        selected_step = self._step if step is None else step
         payload: Dict[str, Any] = {
             "kind": kind,
             "step": selected_step,
@@ -98,6 +109,29 @@ class Run:
             self.client_id,
             self.client_secret,
         )
+
+    def log_images(
+        self,
+        images: Dict[str, Union[str, Path, bytes]],
+        *,
+        step: Optional[int] = None,
+        epoch: Optional[int] = None,
+        content_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        every: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        results: Dict[str, Any] = {}
+        for kind, image in images.items():
+            results[kind] = self.log_image(
+                image,
+                kind=kind,
+                step=step,
+                epoch=epoch,
+                content_type=content_type,
+                metadata=metadata,
+                every=every,
+            )
+        return results
 
     def finish(self, status: str = "finished") -> Dict[str, Any]:
         return _request(

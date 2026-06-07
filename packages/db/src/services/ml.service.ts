@@ -446,6 +446,8 @@ export async function listMlImages(input: {
   projectId: string;
   runId: string;
   kind?: string;
+  step?: number;
+  epoch?: number;
   limit?: number;
 }) {
   return db.mlImage.findMany({
@@ -453,6 +455,8 @@ export async function listMlImages(input: {
       projectId: input.projectId,
       runId: input.runId,
       kind: input.kind,
+      step: input.step,
+      epoch: input.epoch,
     },
     orderBy: {
       createdAt: 'desc',
@@ -465,6 +469,8 @@ export async function listMlImagesWithData(input: {
   projectId: string;
   runId: string;
   kind?: string;
+  step?: number;
+  epoch?: number;
   limit?: number;
 }) {
   const images = await listMlImages(input);

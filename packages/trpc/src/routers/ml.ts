@@ -121,6 +121,8 @@ export const mlRouter = createTRPCRouter({
         projectId: z.string(),
         runId: z.string(),
         kind: z.string().optional(),
+        step: z.number().int().nonnegative().optional(),
+        epoch: z.number().int().nonnegative().optional(),
         limit: z.number().int().positive().max(100).default(60),
       })
     )
