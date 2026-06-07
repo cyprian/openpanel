@@ -42,6 +42,8 @@ COPY apps/public/public/op1.js ./apps/start/public/op1.js
 # BUILD
 FROM base AS build
 
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
