@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  createMlEvaluationRow,
   createMlImage,
   createMlRun,
   getMlImageStoragePath,
@@ -10,7 +11,7 @@ import {
   resolveMlProject,
   updateMlRun,
 } from '@openpanel/db';
-import { zMlImageLog } from '@openpanel/validation';
+import { zMlEvaluationLog, zMlImageLog } from '@openpanel/validation';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import sharp from 'sharp';
 import { z } from 'zod';
@@ -50,6 +51,7 @@ export const zLogMlMetrics = z.object({
 });
 
 export const zLogMlImage = zMlImageLog;
+export const zLogMlEvaluation = zMlEvaluationLog;
 
 function getClientProject(request: FastifyRequest) {
   const project = request.client?.project;
@@ -157,38 +159,13 @@ export async function logImage(
     throw new HttpError('Run not found', { status: 404 });
   }
 
-  const decoded = decodeImagePayload(request.body);
-  const imageMetadata = await readImageMetadata(decoded.buffer);
-  const filename = getSafeImageFilename(
-    request.body.filename,
-    decoded.contentType
-  );
-  const storageKey = path.posix.join(
-    'images',
-    project.id,
-    run.mlProjectId,
-    run.id,
-    `${randomUUID()}-${filename}`
-  );
-  const filePath = getMlImageStoragePath(storageKey);
-
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, decoded.buffer);
-
-  const image = await createMlImage({
+  const image = await persistMlImage({
     projectId: project.id,
-    runId: run.id,
+    run,
     kind: request.body.kind,
+    image: request.body,
     step: request.body.step,
     epoch: request.body.epoch,
-    caption: request.body.caption,
-    filename,
-    contentType: decoded.contentType,
-    sizeBytes: decoded.buffer.byteLength,
-    width: imageMetadata.width,
-    height: imageMetadata.height,
-    storageKey,
-    metadata: request.body.metadata,
   });
 
   return reply.status(202).send({
@@ -202,7 +179,117 @@ export async function logImage(
   });
 }
 
-function decodeImagePayload(input: z.infer<typeof zLogMlImage>) {
+export async function logEvaluation(
+  request: FastifyRequest<{
+    Params: { runId: string };
+    Body: z.infer<typeof zLogMlEvaluation>;
+  }>,
+  reply: FastifyReply
+) {
+  const project = getClientProject(request);
+  const run = await getMlRunById({
+    projectId: project.id,
+    id: request.params.runId,
+  });
+  if (!run) {
+    throw new HttpError('Run not found', { status: 404 });
+  }
+
+  const images = [];
+  for (const [kind, image] of Object.entries(request.body.images)) {
+    if (!image) {
+      continue;
+    }
+    images.push(
+      await persistMlImage({
+        projectId: project.id,
+        run,
+        kind,
+        image,
+        step: request.body.step,
+        epoch: request.body.epoch,
+      })
+    );
+  }
+
+  const row = await createMlEvaluationRow({
+    projectId: project.id,
+    runId: run.id,
+    sampleId: request.body.sampleId,
+    step: request.body.step,
+    epoch: request.body.epoch,
+    imageIds: images.map((image) => image.id),
+    metrics: request.body.metrics,
+    metadata: request.body.metadata,
+  });
+
+  return reply.status(202).send({
+    id: row.id,
+    sampleId: row.sampleId,
+    step: row.step,
+    epoch: row.epoch,
+    metrics: row.metrics,
+    imageIds: row.imageIds,
+  });
+}
+
+async function persistMlImage({
+  projectId,
+  run,
+  kind,
+  image,
+  step,
+  epoch,
+}: {
+  projectId: string;
+  run: NonNullable<Awaited<ReturnType<typeof getMlRunById>>>;
+  kind: string;
+  image: {
+    image: string;
+    filename?: string;
+    contentType?: string;
+    caption?: string | null;
+    metadata?: Record<string, unknown>;
+  };
+  step?: number;
+  epoch?: number | null;
+}) {
+  const decoded = decodeImagePayload(image);
+  const imageMetadata = await readImageMetadata(decoded.buffer);
+  const filename = getSafeImageFilename(image.filename, decoded.contentType);
+  const storageKey = path.posix.join(
+    'images',
+    projectId,
+    run.mlProjectId,
+    run.id,
+    `${randomUUID()}-${filename}`
+  );
+  const filePath = getMlImageStoragePath(storageKey);
+
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, decoded.buffer);
+
+  return createMlImage({
+    projectId,
+    runId: run.id,
+    kind,
+    step,
+    epoch,
+    caption: image.caption,
+    filename,
+    contentType: decoded.contentType,
+    sizeBytes: decoded.buffer.byteLength,
+    width: imageMetadata.width,
+    height: imageMetadata.height,
+    storageKey,
+    metadata: image.metadata,
+  });
+}
+
+function decodeImagePayload(input: {
+  image: string;
+  contentType?: string;
+}) {
   const match = input.image.match(DATA_URL_PATTERN);
   const contentType = match?.[1] ?? input.contentType;
   const encoded = match?.[2] ?? input.image;

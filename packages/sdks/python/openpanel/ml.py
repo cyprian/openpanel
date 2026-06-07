@@ -133,6 +133,65 @@ class Run:
             )
         return results
 
+    def log_evaluation(
+        self,
+        *,
+        sample_id: Optional[str] = None,
+        input: Optional[Union[str, Path, bytes]] = None,
+        ground_truth: Optional[Union[str, Path, bytes]] = None,
+        prediction: Optional[Union[str, Path, bytes]] = None,
+        error_map: Optional[Union[str, Path, bytes]] = None,
+        metrics: Optional[Dict[str, float]] = None,
+        step: Optional[int] = None,
+        epoch: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        content_type: Optional[str] = None,
+        every: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        selected_step = max(self._step - 1, 0) if step is None else step
+        if every is not None:
+            if every <= 0:
+                raise OpenPanelError("log_evaluation every must be greater than 0")
+            if selected_step % every != 0:
+                return {
+                    "skipped": True,
+                    "reason": "frequency",
+                    "step": selected_step,
+                }
+
+        images: Dict[str, Dict[str, Any]] = {}
+        for kind, image in {
+            "input": input,
+            "ground_truth": ground_truth,
+            "prediction": prediction,
+            "error_map": error_map,
+        }.items():
+            if image is None:
+                continue
+            images[kind] = _encode_image_payload(
+                image,
+                content_type=content_type,
+            )
+
+        payload: Dict[str, Any] = {
+            "step": selected_step,
+            "metrics": metrics or {},
+            "metadata": metadata or {},
+            "images": images,
+        }
+        if sample_id is not None:
+            payload["sampleId"] = sample_id
+        if epoch is not None:
+            payload["epoch"] = epoch
+
+        return _request(
+            "POST",
+            f"{self.api_url}/ml/runs/{self.id}/evaluations",
+            payload,
+            self.client_id,
+            self.client_secret,
+        )
+
     def finish(self, status: str = "finished") -> Dict[str, Any]:
         return _request(
             "PATCH",
@@ -212,3 +271,33 @@ def _request(
     except urllib.error.HTTPError as error:
         message = error.read().decode("utf-8")
         raise OpenPanelError(f"OpenPanel request failed: {error.code} {message}") from error
+
+
+def _encode_image_payload(
+    image: Union[str, Path, bytes],
+    *,
+    content_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    resolved_filename = None
+    resolved_content_type = content_type
+    if isinstance(image, (str, Path)):
+        path = Path(image)
+        image_bytes = path.read_bytes()
+        resolved_filename = path.name
+        guessed_type, _ = mimetypes.guess_type(path.name)
+        resolved_content_type = resolved_content_type or guessed_type
+    else:
+        image_bytes = image
+
+    if resolved_content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise OpenPanelError("log_evaluation supports PNG, JPEG, and WebP images")
+
+    payload: Dict[str, Any] = {
+        "image": base64.b64encode(image_bytes).decode("ascii"),
+        "contentType": resolved_content_type,
+        "metadata": {},
+    }
+    if resolved_filename is not None:
+        payload["filename"] = resolved_filename
+
+    return payload

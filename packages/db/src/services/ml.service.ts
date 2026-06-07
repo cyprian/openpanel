@@ -499,3 +499,177 @@ export async function listMlImagesWithData(input: {
     })
   );
 }
+
+export async function createMlEvaluationRow(input: {
+  projectId: string;
+  runId: string;
+  sampleId?: string | null;
+  step?: number;
+  epoch?: number | null;
+  imageIds?: string[];
+  metrics?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}) {
+  const run = await db.mlRun.findFirstOrThrow({
+    where: {
+      id: input.runId,
+      projectId: input.projectId,
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      mlProjectId: true,
+      organizationId: true,
+    },
+  });
+
+  return db.mlEvaluationRow.create({
+    data: {
+      projectId: input.projectId,
+      organizationId: run.organizationId,
+      mlProjectId: run.mlProjectId,
+      runId: run.id,
+      sampleId: input.sampleId,
+      step: input.step,
+      epoch: input.epoch,
+      imageIds: input.imageIds ?? [],
+      metrics: input.metrics ?? {},
+      metadata: input.metadata ?? {},
+    },
+  });
+}
+
+export async function listMlEvaluationRows(input: {
+  projectId: string;
+  runId: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}) {
+  const pageSize = Math.min(input.pageSize ?? 25, 100);
+  const page = Math.max(input.page ?? 1, 1);
+  const where = {
+    projectId: input.projectId,
+    runId: input.runId,
+    ...(input.search
+      ? {
+          sampleId: {
+            contains: input.search,
+            mode: 'insensitive' as const,
+          },
+        }
+      : {}),
+  };
+  const orderBy = getEvaluationRowOrderBy(input.sortBy, input.sortDirection);
+  const [rows, total] = await Promise.all([
+    db.mlEvaluationRow.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    db.mlEvaluationRow.count({ where }),
+  ]);
+
+  const imageIds = [...new Set(rows.flatMap((row) => row.imageIds))];
+  const images = imageIds.length
+    ? await listMlImagesByIdsWithData({
+        projectId: input.projectId,
+        runId: input.runId,
+        ids: imageIds,
+      })
+    : [];
+  const imagesById = new Map(images.map((image) => [image.id, image]));
+  const rowsWithImages = rows.map((row) => ({
+    ...row,
+    images: row.imageIds
+      .map((id) => imagesById.get(id))
+      .filter((image): image is NonNullable<typeof image> => !!image),
+  }));
+  const metricKeys = getUniqueMetricKeys(rows.map((row) => row.metrics));
+
+  return {
+    rows: rowsWithImages,
+    metricKeys,
+    page,
+    pageSize,
+    total,
+    totalPages: Math.max(Math.ceil(total / pageSize), 1),
+  };
+}
+
+async function listMlImagesByIdsWithData(input: {
+  projectId: string;
+  runId: string;
+  ids: string[];
+}) {
+  const images = await db.mlImage.findMany({
+    where: {
+      projectId: input.projectId,
+      runId: input.runId,
+      id: {
+        in: input.ids,
+      },
+    },
+  });
+
+  return Promise.all(
+    images.map(async (image) => {
+      if (image.storageProvider !== ML_IMAGE_STORAGE_PROVIDER_LOCAL) {
+        return {
+          ...image,
+          dataUrl: image.url,
+        };
+      }
+
+      try {
+        const buffer = await readFile(getMlImageStoragePath(image.storageKey));
+        return {
+          ...image,
+          dataUrl: `data:${image.contentType};base64,${buffer.toString('base64')}`,
+        };
+      } catch {
+        return {
+          ...image,
+          dataUrl: '',
+        };
+      }
+    })
+  );
+}
+
+function getEvaluationRowOrderBy(
+  sortBy: string | undefined,
+  sortDirection: 'asc' | 'desc' | undefined
+) {
+  const direction = sortDirection ?? 'desc';
+  if (sortBy === 'sampleId') {
+    return { sampleId: direction };
+  }
+  if (sortBy === 'step') {
+    return { step: direction };
+  }
+  if (sortBy === 'epoch') {
+    return { epoch: direction };
+  }
+
+  return { createdAt: direction };
+}
+
+function getUniqueMetricKeys(values: unknown[]) {
+  const keys = new Set<string>();
+  for (const value of values) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      continue;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      if (typeof item === 'number') {
+        keys.add(key);
+      }
+    }
+  }
+
+  return [...keys].sort();
+}

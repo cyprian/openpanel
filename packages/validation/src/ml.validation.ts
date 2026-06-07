@@ -68,7 +68,32 @@ export const zMlImageLog = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
 });
 
+export const zMlEvaluationImage = z.object({
+  image: z.string().min(1),
+  filename: z.string().min(1).optional(),
+  contentType: z.enum(['image/png', 'image/jpeg', 'image/webp']).optional(),
+  caption: z.string().nullish(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const zMlEvaluationLog = z.object({
+  sampleId: z.string().min(1).nullish(),
+  step: z.number().int().nonnegative().optional(),
+  epoch: z.number().int().nonnegative().nullish(),
+  metrics: z.record(z.string().min(1), z.number().finite()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+  images: z
+    .object({
+      input: zMlEvaluationImage.optional(),
+      ground_truth: zMlEvaluationImage.optional(),
+      prediction: zMlEvaluationImage.optional(),
+      error_map: zMlEvaluationImage.optional(),
+    })
+    .default({}),
+});
+
 export type IMlRunStatus = z.infer<typeof zMlRunStatus>;
 export type IMlMetricLog = z.infer<typeof zMlMetricLog>;
 export type IMlImageKind = z.infer<typeof zMlImageKind>;
 export type IMlImageLog = z.infer<typeof zMlImageLog>;
+export type IMlEvaluationLog = z.infer<typeof zMlEvaluationLog>;

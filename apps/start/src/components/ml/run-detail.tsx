@@ -2,6 +2,16 @@ import { MlStatusBadge } from '@/components/ml/status-badge';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   ChartTooltipContainer,
   ChartTooltipHeader,
@@ -45,6 +55,12 @@ export function MlRunDetail({
     trpc.ml.metricNames.queryOptions({ projectId, runId })
   );
   const [metric, setMetric] = useState('');
+  const [evaluationSearch, setEvaluationSearch] = useState('');
+  const [evaluationPage, setEvaluationPage] = useState(1);
+  const [evaluationSortBy, setEvaluationSortBy] = useState('createdAt');
+  const [evaluationSortDirection, setEvaluationSortDirection] = useState<
+    'asc' | 'desc'
+  >('desc');
   const selectedMetric = metric || metricNames.data?.[0]?.metric || '';
   const series = useQuery({
     ...trpc.ml.metricSeries.queryOptions({
@@ -56,6 +72,18 @@ export function MlRunDetail({
   });
   const images = useQuery({
     ...trpc.ml.images.queryOptions({ projectId, runId, limit: 100 }),
+    enabled: !!run.data,
+  });
+  const evaluationRows = useQuery({
+    ...trpc.ml.evaluationRows.queryOptions({
+      projectId,
+      runId,
+      search: evaluationSearch || undefined,
+      page: evaluationPage,
+      pageSize: 10,
+      sortBy: evaluationSortBy,
+      sortDirection: evaluationSortDirection,
+    }),
     enabled: !!run.data,
   });
   const summary = normalizeNumberRecord(run.data?.summary);
@@ -155,6 +183,27 @@ export function MlRunDetail({
         </section>
       </div>
       <ImageGallery images={images.data ?? []} />
+      <EvaluationTable
+        data={evaluationRows.data}
+        isLoading={evaluationRows.isLoading}
+        onPageChange={setEvaluationPage}
+        onSearchChange={(value) => {
+          setEvaluationSearch(value);
+          setEvaluationPage(1);
+        }}
+        onSortByChange={(value) => {
+          setEvaluationSortBy(value);
+          setEvaluationPage(1);
+        }}
+        onSortDirectionChange={(value) => {
+          setEvaluationSortDirection(value);
+          setEvaluationPage(1);
+        }}
+        page={evaluationPage}
+        search={evaluationSearch}
+        sortBy={evaluationSortBy}
+        sortDirection={evaluationSortDirection}
+      />
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <JsonPanel title="Config" value={config} emptyText="No config logged." />
         <JsonPanel
@@ -186,6 +235,26 @@ type MlRunImage = {
   dataUrl: string;
 };
 
+type MlEvaluationRow = {
+  id: string;
+  sampleId: string | null;
+  step: number | null;
+  epoch: number | null;
+  metrics: unknown;
+  metadata: unknown;
+  images: MlRunImage[];
+  createdAt: Date | string;
+};
+
+type MlEvaluationRowsData = {
+  rows: MlEvaluationRow[];
+  metricKeys: string[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 type ImageGroup = {
   key: string;
   step: number | null;
@@ -193,6 +262,190 @@ type ImageGroup = {
   images: MlRunImage[];
   byKind: Partial<Record<(typeof IMAGE_KIND_COLUMNS)[number], MlRunImage[]>>;
 };
+
+function EvaluationTable({
+  data,
+  isLoading,
+  search,
+  page,
+  sortBy,
+  sortDirection,
+  onSearchChange,
+  onPageChange,
+  onSortByChange,
+  onSortDirectionChange,
+}: {
+  data?: MlEvaluationRowsData;
+  isLoading: boolean;
+  search: string;
+  page: number;
+  sortBy: string;
+  sortDirection: 'asc' | 'desc';
+  onSearchChange: (value: string) => void;
+  onPageChange: (value: number) => void;
+  onSortByChange: (value: string) => void;
+  onSortDirectionChange: (value: 'asc' | 'desc') => void;
+}) {
+  const metricKeys = data?.metricKeys ?? [];
+  const rows = useMemo(() => {
+    const currentRows = data?.rows ?? [];
+    if (!metricKeys.includes(sortBy)) {
+      return currentRows;
+    }
+
+    return [...currentRows].sort((a, b) => {
+      const aValue = getNumericMetric(a.metrics, sortBy);
+      const bValue = getNumericMetric(b.metrics, sortBy);
+      const delta =
+        (aValue ?? Number.NEGATIVE_INFINITY) -
+        (bValue ?? Number.NEGATIVE_INFINITY);
+      return sortDirection === 'asc' ? delta : -delta;
+    });
+  }, [data?.rows, metricKeys, sortBy, sortDirection]);
+  const totalPages = data?.totalPages ?? 1;
+
+  return (
+    <section className="mt-4 rounded-md border bg-card p-4">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div>
+          <div className="font-medium">Evaluation table</div>
+          <div className="text-muted-foreground text-xs">
+            {data?.total ?? 0} samples
+          </div>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Input
+            className="w-48"
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search sample"
+            value={search}
+          />
+          <select
+            className="h-8 rounded-md border bg-background px-2 text-sm"
+            onChange={(event) => onSortByChange(event.target.value)}
+            value={sortBy}
+          >
+            <option value="createdAt">Newest</option>
+            <option value="sampleId">Sample</option>
+            <option value="epoch">Epoch</option>
+            <option value="step">Step</option>
+            {metricKeys.map((key) => (
+              <option key={key} value={key}>
+                {key}
+              </option>
+            ))}
+          </select>
+          <select
+            className="h-8 rounded-md border bg-background px-2 text-sm"
+            onChange={(event) =>
+              onSortDirectionChange(event.target.value as 'asc' | 'desc')
+            }
+            value={sortDirection}
+          >
+            <option value="desc">Desc</option>
+            <option value="asc">Asc</option>
+          </select>
+        </div>
+      </div>
+      {isLoading ? (
+        <div className="center-center h-40 text-muted-foreground text-sm">
+          Loading evaluation rows...
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
+          No visual evaluation rows have been logged for this run yet.
+        </div>
+      ) : (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Sample</TableHead>
+                <TableHead>Epoch</TableHead>
+                <TableHead>Step</TableHead>
+                {IMAGE_KIND_COLUMNS.map((kind) => (
+                  <TableHead key={kind}>{formatImageKind(kind)}</TableHead>
+                ))}
+                {metricKeys.map((key) => (
+                  <TableHead className="text-right" key={key}>
+                    {key}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="font-medium">
+                    {row.sampleId ?? row.id.slice(0, 8)}
+                  </TableCell>
+                  <TableCell>{row.epoch ?? '-'}</TableCell>
+                  <TableCell>{row.step ?? '-'}</TableCell>
+                  {IMAGE_KIND_COLUMNS.map((kind) => (
+                    <TableCell key={kind}>
+                      <EvaluationImageThumb
+                        image={row.images.find((image) => image.kind === kind)}
+                      />
+                    </TableCell>
+                  ))}
+                  {metricKeys.map((key) => (
+                    <TableCell className="text-right font-mono" key={key}>
+                      {formatMetricValue(getNumericMetric(row.metrics, key))}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-muted-foreground text-sm">
+              Page {page} of {totalPages}
+            </div>
+            <div className="row gap-2">
+              <Button
+                disabled={page <= 1}
+                onClick={() => onPageChange(Math.max(page - 1, 1))}
+                variant="outline"
+              >
+                Previous
+              </Button>
+              <Button
+                disabled={page >= totalPages}
+                onClick={() => onPageChange(Math.min(page + 1, totalPages))}
+                variant="outline"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function EvaluationImageThumb({ image }: { image?: MlRunImage }) {
+  if (!image) {
+    return <span className="text-muted-foreground text-xs">-</span>;
+  }
+
+  return (
+    <div className="h-16 w-20 overflow-hidden rounded-md border bg-def-100">
+      {image.dataUrl ? (
+        <img
+          alt={image.caption || image.filename}
+          className="h-full w-full object-contain"
+          src={image.dataUrl}
+          title={image.caption || image.filename}
+        />
+      ) : (
+        <div className="center-center h-full text-muted-foreground text-xs">
+          Missing
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ImageGallery({
   images,
@@ -544,6 +797,17 @@ function isImageKindColumn(
 
 function formatNumber(value: number) {
   return Number.isInteger(value) ? value : value.toFixed(4);
+}
+
+function getNumericMetric(value: unknown, key: string) {
+  const record = normalizeRecord(value);
+  const item = record[key];
+
+  return typeof item === 'number' ? item : null;
+}
+
+function formatMetricValue(value: number | null) {
+  return typeof value === 'number' ? formatNumber(value) : '-';
 }
 
 function formatAxisNumber(value: number) {

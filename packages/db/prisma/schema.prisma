@@ -86,6 +86,7 @@ model Organization {
   mlProjects      MlProject[]
   mlRuns          MlRun[]
   mlImages        MlImage[]
+  mlEvaluationRows MlEvaluationRow[]
   timezone        String?
   onboarding      String?          @default("completed")
 
@@ -260,6 +261,7 @@ model Project {
   mlProjects        MlProject[]
   mlRuns            MlRun[]
   mlImages          MlImage[]
+  mlEvaluationRows  MlEvaluationRow[]
 
   // When deleteAt > now(), the project will be deleted
   deleteAt DateTime?
@@ -281,6 +283,7 @@ model MlProject {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   runs           MlRun[]
   images         MlImage[]
+  evaluationRows MlEvaluationRow[]
   archivedAt     DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @default(now()) @updatedAt
@@ -309,6 +312,7 @@ model MlRun {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   images         MlImage[]
+  evaluationRows MlEvaluationRow[]
   startedAt      DateTime?
   endedAt        DateTime?
   archivedAt     DateTime?
@@ -318,6 +322,32 @@ model MlRun {
   @@index([mlProjectId, createdAt])
   @@index([projectId, archivedAt])
   @@map("ml_runs")
+}
+
+model MlEvaluationRow {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sampleId       String?
+  step           Int?
+  epoch          Int?
+  imageIds       String[]     @default([])
+  /// [IPrismaMlEvaluationMetrics]
+  metrics        Json         @default("{}")
+  /// [IPrismaMlEvaluationMetadata]
+  metadata       Json         @default("{}")
+  runId          String       @db.Uuid
+  run            MlRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  mlProjectId    String       @db.Uuid
+  mlProject      MlProject    @relation(fields: [mlProjectId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([runId, step])
+  @@index([runId, sampleId])
+  @@index([projectId, createdAt])
+  @@map("ml_evaluation_rows")
 }
 
 model MlImage {
