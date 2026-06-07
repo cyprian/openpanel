@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MlStatusBadge } from '@/components/ml/status-badge';
 import {
   Table,
   TableBody,
@@ -48,10 +49,11 @@ function Component() {
         queryClient.invalidateQueries(trpc.ml.runs.pathFilter());
         toast.success('Run created');
         navigate({
-          to: '/$organizationId/$projectId/ml/runs/$runId',
+          to: '/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId',
           params: {
             organizationId,
             projectId,
+            mlProjectId,
             runId: run.id,
           },
         });
@@ -106,14 +108,21 @@ function Component() {
                 <TableCell>
                   <Link
                     className="inline-flex items-center gap-2 font-medium hover:underline"
-                    to="/$organizationId/$projectId/ml/runs/$runId"
-                    params={{ organizationId, projectId, runId: run.id }}
+                    to="/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId"
+                    params={{
+                      organizationId,
+                      projectId,
+                      mlProjectId,
+                      runId: run.id,
+                    }}
                   >
                     {run.name}
                     <ArrowRightIcon className="size-3.5" />
                   </Link>
                 </TableCell>
-                <TableCell>{run.status}</TableCell>
+                <TableCell>
+                  <MlStatusBadge status={run.status} />
+                </TableCell>
                 <TableCell>{run.tags.join(', ') || '-'}</TableCell>
                 <TableCell>
                   {formatDistanceToNow(run.updatedAt, { addSuffix: true })}

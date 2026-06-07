@@ -3,7 +3,7 @@ import { createProjectTitle } from '@/utils/title';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute(
-  '/_app/$organizationId/$projectId/ml/runs/$runId',
+  '/_app/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId',
 )({
   component: Component,
   head: () => ({
@@ -12,13 +12,14 @@ export const Route = createFileRoute(
 });
 
 function Component() {
-  const { organizationId, projectId, runId } = Route.useParams();
+  const { organizationId, projectId, mlProjectId, runId } = Route.useParams();
 
   return (
     <MlRunDetail
       organizationId={organizationId}
       projectId={projectId}
       runId={runId}
+      fallbackMlProjectId={mlProjectId}
     />
   );
 }

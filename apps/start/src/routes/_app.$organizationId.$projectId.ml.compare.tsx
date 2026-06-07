@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { MlStatusBadge } from '@/components/ml/status-badge';
 import {
   Table,
   TableBody,
@@ -95,8 +96,9 @@ function Component() {
                       {run.name}
                     </span>
                     <span className="block truncate text-muted-foreground text-xs">
-                      {run.mlProject.name} · {run.status}
+                      {run.mlProject.name}
                     </span>
+                    <MlStatusBadge status={run.status} className="mt-1" />
                   </span>
                 </label>
               );

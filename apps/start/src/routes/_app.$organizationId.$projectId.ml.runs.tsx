@@ -6,6 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { MlStatusBadge } from '@/components/ml/status-badge';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { useTRPC } from '@/integrations/trpc/react';
@@ -50,15 +51,22 @@ function Component() {
                 <TableCell>
                   <Link
                     className="inline-flex items-center gap-2 font-medium hover:underline"
-                    to="/$organizationId/$projectId/ml/runs/$runId"
-                    params={{ organizationId, projectId, runId: run.id }}
+                    to="/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId"
+                    params={{
+                      organizationId,
+                      projectId,
+                      mlProjectId: run.mlProjectId,
+                      runId: run.id,
+                    }}
                   >
                     {run.name}
                     <ArrowRightIcon className="size-3.5" />
                   </Link>
                 </TableCell>
                 <TableCell>{run.mlProject.name}</TableCell>
-                <TableCell>{run.status}</TableCell>
+                <TableCell>
+                  <MlStatusBadge status={run.status} />
+                </TableCell>
                 <TableCell>
                   {formatDistanceToNow(run.updatedAt, { addSuffix: true })}
                 </TableCell>

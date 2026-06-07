@@ -106,6 +106,7 @@ import { Route as AppOrganizationIdProjectIdGroupsGroupIdTabsMembersRouteImport 
 import { Route as AppOrganizationIdProjectIdGroupsGroupIdTabsEventsRouteImport } from './routes/_app.$organizationId.$projectId.groups_.$groupId._tabs.events'
 import { Route as AppOrganizationIdProjectIdCohortsCohortIdTabsMembersRouteImport } from './routes/_app.$organizationId.$projectId.cohorts_.$cohortId._tabs.members'
 import { Route as AppOrganizationIdProjectIdCohortsCohortIdTabsEventsRouteImport } from './routes/_app.$organizationId.$projectId.cohorts_.$cohortId._tabs.events'
+import { Route as AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRouteImport } from './routes/_app.$organizationId.$projectId.ml.projects.$mlProjectId.runs.$runId'
 
 const AppOrganizationIdMembersRouteImport = createFileRoute(
   '/_app/$organizationId/members',
@@ -731,6 +732,12 @@ const AppOrganizationIdProjectIdCohortsCohortIdTabsEventsRoute =
     path: '/events',
     getParentRoute: () => AppOrganizationIdProjectIdCohortsCohortIdTabsRoute,
   } as any)
+const AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRoute =
+  AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRouteImport.update({
+    id: '/runs/$runId',
+    path: '/runs/$runId',
+    getParentRoute: () => AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -795,7 +802,7 @@ export interface FileRoutesByFullPath {
   '/$organizationId/$projectId/events/events': typeof AppOrganizationIdProjectIdEventsTabsEventsRoute
   '/$organizationId/$projectId/events/stats': typeof AppOrganizationIdProjectIdEventsTabsStatsRoute
   '/$organizationId/$projectId/groups/$groupId': typeof AppOrganizationIdProjectIdGroupsGroupIdTabsRouteWithChildren
-  '/$organizationId/$projectId/ml/projects/$mlProjectId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute
+  '/$organizationId/$projectId/ml/projects/$mlProjectId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteWithChildren
   '/$organizationId/$projectId/ml/runs/$runId': typeof AppOrganizationIdProjectIdMlRunsRunIdRoute
   '/$organizationId/$projectId/notifications/notifications': typeof AppOrganizationIdProjectIdNotificationsTabsNotificationsRoute
   '/$organizationId/$projectId/notifications/rules': typeof AppOrganizationIdProjectIdNotificationsTabsRulesRoute
@@ -824,6 +831,7 @@ export interface FileRoutesByFullPath {
   '/$organizationId/$projectId/cohorts/$cohortId/': typeof AppOrganizationIdProjectIdCohortsCohortIdTabsIndexRoute
   '/$organizationId/$projectId/groups/$groupId/': typeof AppOrganizationIdProjectIdGroupsGroupIdTabsIndexRoute
   '/$organizationId/$projectId/profiles/$profileId/': typeof AppOrganizationIdProjectIdProfilesProfileIdTabsIndexRoute
+  '/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -883,7 +891,7 @@ export interface FileRoutesByTo {
   '/$organizationId/$projectId/events/events': typeof AppOrganizationIdProjectIdEventsTabsEventsRoute
   '/$organizationId/$projectId/events/stats': typeof AppOrganizationIdProjectIdEventsTabsStatsRoute
   '/$organizationId/$projectId/groups/$groupId': typeof AppOrganizationIdProjectIdGroupsGroupIdTabsIndexRoute
-  '/$organizationId/$projectId/ml/projects/$mlProjectId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute
+  '/$organizationId/$projectId/ml/projects/$mlProjectId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteWithChildren
   '/$organizationId/$projectId/ml/runs/$runId': typeof AppOrganizationIdProjectIdMlRunsRunIdRoute
   '/$organizationId/$projectId/notifications/notifications': typeof AppOrganizationIdProjectIdNotificationsTabsNotificationsRoute
   '/$organizationId/$projectId/notifications/rules': typeof AppOrganizationIdProjectIdNotificationsTabsRulesRoute
@@ -905,6 +913,7 @@ export interface FileRoutesByTo {
   '/$organizationId/$projectId/groups/$groupId/members': typeof AppOrganizationIdProjectIdGroupsGroupIdTabsMembersRoute
   '/$organizationId/$projectId/profiles/$profileId/events': typeof AppOrganizationIdProjectIdProfilesProfileIdTabsEventsRoute
   '/$organizationId/$projectId/profiles/$profileId/sessions': typeof AppOrganizationIdProjectIdProfilesProfileIdTabsSessionsRoute
+  '/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -983,7 +992,7 @@ export interface FileRoutesById {
   '/_app/$organizationId/$projectId/events/_tabs/stats': typeof AppOrganizationIdProjectIdEventsTabsStatsRoute
   '/_app/$organizationId/$projectId/groups_/$groupId': typeof AppOrganizationIdProjectIdGroupsGroupIdRouteWithChildren
   '/_app/$organizationId/$projectId/groups_/$groupId/_tabs': typeof AppOrganizationIdProjectIdGroupsGroupIdTabsRouteWithChildren
-  '/_app/$organizationId/$projectId/ml/projects/$mlProjectId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute
+  '/_app/$organizationId/$projectId/ml/projects/$mlProjectId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteWithChildren
   '/_app/$organizationId/$projectId/ml/runs/$runId': typeof AppOrganizationIdProjectIdMlRunsRunIdRoute
   '/_app/$organizationId/$projectId/notifications/_tabs/notifications': typeof AppOrganizationIdProjectIdNotificationsTabsNotificationsRoute
   '/_app/$organizationId/$projectId/notifications/_tabs/rules': typeof AppOrganizationIdProjectIdNotificationsTabsRulesRoute
@@ -1013,6 +1022,7 @@ export interface FileRoutesById {
   '/_app/$organizationId/$projectId/cohorts_/$cohortId/_tabs/': typeof AppOrganizationIdProjectIdCohortsCohortIdTabsIndexRoute
   '/_app/$organizationId/$projectId/groups_/$groupId/_tabs/': typeof AppOrganizationIdProjectIdGroupsGroupIdTabsIndexRoute
   '/_app/$organizationId/$projectId/profiles/$profileId/_tabs/': typeof AppOrganizationIdProjectIdProfilesProfileIdTabsIndexRoute
+  '/_app/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId': typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1108,6 +1118,7 @@ export interface FileRouteTypes {
     | '/$organizationId/$projectId/cohorts/$cohortId/'
     | '/$organizationId/$projectId/groups/$groupId/'
     | '/$organizationId/$projectId/profiles/$profileId/'
+    | '/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1189,6 +1200,7 @@ export interface FileRouteTypes {
     | '/$organizationId/$projectId/groups/$groupId/members'
     | '/$organizationId/$projectId/profiles/$profileId/events'
     | '/$organizationId/$projectId/profiles/$profileId/sessions'
+    | '/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId'
   id:
     | '__root__'
     | '/'
@@ -1296,6 +1308,7 @@ export interface FileRouteTypes {
     | '/_app/$organizationId/$projectId/cohorts_/$cohortId/_tabs/'
     | '/_app/$organizationId/$projectId/groups_/$groupId/_tabs/'
     | '/_app/$organizationId/$projectId/profiles/$profileId/_tabs/'
+    | '/_app/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -2053,6 +2066,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOrganizationIdProjectIdCohortsCohortIdTabsEventsRouteImport
       parentRoute: typeof AppOrganizationIdProjectIdCohortsCohortIdTabsRoute
     }
+    '/_app/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId': {
+      id: '/_app/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId'
+      path: '/runs/$runId'
+      fullPath: '/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId'
+      preLoaderRoute: typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRouteImport
+      parentRoute: typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute
+    }
   }
 }
 
@@ -2071,10 +2091,25 @@ const AppOrganizationIdProjectIdMlRunsRouteWithChildren =
     AppOrganizationIdProjectIdMlRunsRouteChildren,
   )
 
+interface AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteChildren {
+  AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRoute: typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRoute
+}
+
+const AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteChildren: AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteChildren =
+  {
+    AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRoute:
+      AppOrganizationIdProjectIdMlProjectsMlProjectIdRunsRunIdRoute,
+  }
+
+const AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteWithChildren =
+  AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute._addFileChildren(
+    AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteChildren,
+  )
+
 interface AppOrganizationIdProjectIdMlRouteChildren {
   AppOrganizationIdProjectIdMlCompareRoute: typeof AppOrganizationIdProjectIdMlCompareRoute
   AppOrganizationIdProjectIdMlRunsRoute: typeof AppOrganizationIdProjectIdMlRunsRouteWithChildren
-  AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute: typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute
+  AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute: typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteWithChildren
 }
 
 const AppOrganizationIdProjectIdMlRouteChildren: AppOrganizationIdProjectIdMlRouteChildren =
@@ -2084,7 +2119,7 @@ const AppOrganizationIdProjectIdMlRouteChildren: AppOrganizationIdProjectIdMlRou
     AppOrganizationIdProjectIdMlRunsRoute:
       AppOrganizationIdProjectIdMlRunsRouteWithChildren,
     AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute:
-      AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute,
+      AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteWithChildren,
   }
 
 const AppOrganizationIdProjectIdMlRouteWithChildren =
