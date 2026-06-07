@@ -2,6 +2,12 @@ import { MlStatusBadge } from '@/components/ml/status-badge';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
+import {
+  ChartTooltipContainer,
+  ChartTooltipHeader,
+  ChartTooltipItem,
+} from '@/components/charts/chart-tooltip';
+import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
 import { useTRPC } from '@/integrations/trpc/react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -9,6 +15,18 @@ import { formatDistanceToNow } from 'date-fns';
 import { ArrowLeftIcon } from 'lucide-react';
 import type React from 'react';
 import { useMemo, useState } from 'react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  type TooltipProps,
+} from 'recharts';
+
+const ML_CHART_BLUE = '#2563eb';
 
 export function MlRunDetail({
   organizationId,
@@ -129,7 +147,7 @@ export function MlRunDetail({
               ))}
             </select>
           </div>
-          <MetricSvg data={series.data ?? []} />
+          <MetricChart data={series.data ?? []} metric={selectedMetric} />
         </section>
       </div>
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
@@ -184,34 +202,23 @@ function JsonPanel({
   );
 }
 
-function MetricSvg({
+function MetricChart({
   data,
+  metric,
 }: {
   data: Array<{ step: number; value: number }>;
+  metric: string;
 }) {
-  const points = useMemo(() => {
-    if (data.length === 0) {
-      return '';
-    }
-    const width = 720;
-    const height = 260;
-    const minStep = Math.min(...data.map((item) => item.step));
-    const maxStep = Math.max(...data.map((item) => item.step));
-    const minValue = Math.min(...data.map((item) => item.value));
-    const maxValue = Math.max(...data.map((item) => item.value));
-    const stepRange = Math.max(maxStep - minStep, 1);
-    const valueRange = Math.max(maxValue - minValue, 1);
-
+  const chartData = useMemo(() => {
     return data
-      .map((item) => {
-        const x = ((item.step - minStep) / stepRange) * width;
-        const y = height - ((item.value - minValue) / valueRange) * height;
-        return `${x},${y}`;
-      })
-      .join(' ');
+      .map((item) => ({
+        step: item.step,
+        value: item.value,
+      }))
+      .sort((a, b) => a.step - b.step);
   }, [data]);
 
-  if (!points) {
+  if (chartData.length === 0) {
     return (
       <div className="center-center h-[280px] text-muted-foreground text-sm">
         No chart data yet.
@@ -220,20 +227,96 @@ function MetricSvg({
   }
 
   return (
-    <svg
-      className="h-[280px] w-full overflow-visible"
-      viewBox="0 0 720 260"
-      role="img"
-      aria-label="Metric series"
-    >
-      <polyline
-        points={points}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    <div className="h-[320px]">
+      <ResponsiveContainer height="100%" width="100%">
+        <LineChart
+          data={chartData}
+          margin={{ top: 12, right: 20, bottom: 28, left: 12 }}
+        >
+          <CartesianGrid
+            className="stroke-border"
+            horizontal
+            strokeDasharray="3 3"
+            vertical={false}
+          />
+          <XAxis
+            {...X_AXIS_STYLE_PROPS}
+            dataKey="step"
+            label={{
+              value: 'Step',
+              position: 'insideBottom',
+              offset: -16,
+              className: 'fill-muted-foreground font-mono text-[10px]',
+            }}
+            type="number"
+          />
+          <YAxis
+            axisLine={false}
+            className="font-mono"
+            label={{
+              value: metric,
+              angle: -90,
+              position: 'insideLeft',
+              className: 'fill-muted-foreground font-mono text-[10px]',
+            }}
+            tickFormatter={formatAxisNumber}
+            tickLine={false}
+            width={64}
+          />
+          <Tooltip
+            content={<MetricTooltip metric={metric} />}
+            cursor={{ stroke: ML_CHART_BLUE, strokeDasharray: '4 4' }}
+          />
+          <Line
+            activeDot={{
+              r: 5,
+              fill: ML_CHART_BLUE,
+              stroke: 'var(--background)',
+              strokeWidth: 2,
+            }}
+            dataKey="value"
+            dot={{
+              r: 2,
+              fill: ML_CHART_BLUE,
+              stroke: ML_CHART_BLUE,
+              strokeWidth: 1,
+            }}
+            isAnimationActive={false}
+            stroke={ML_CHART_BLUE}
+            strokeWidth={2.5}
+            type="monotone"
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function MetricTooltip({
+  active,
+  payload,
+  metric,
+}: TooltipProps<number, string> & { metric: string }) {
+  const point = payload?.[0]?.payload as
+    | { step: number; value: number }
+    | undefined;
+
+  if (!active || !point) {
+    return null;
+  }
+
+  return (
+    <ChartTooltipContainer>
+      <ChartTooltipHeader>
+        <div className="font-medium">Step {point.step}</div>
+      </ChartTooltipHeader>
+      <ChartTooltipItem color={ML_CHART_BLUE}>
+        <div className="flex justify-between gap-8 font-medium font-mono">
+          <span>{metric}</span>
+          <span>{formatNumber(point.value)}</span>
+        </div>
+      </ChartTooltipItem>
+    </ChartTooltipContainer>
   );
 }
 
@@ -259,4 +342,20 @@ function normalizeNumberRecord(value: unknown): Record<string, number> {
 
 function formatNumber(value: number) {
   return Number.isInteger(value) ? value : value.toFixed(4);
+}
+
+function formatAxisNumber(value: number) {
+  if (Math.abs(value) >= 1000) {
+    return value.toExponential(1);
+  }
+
+  if (Number.isInteger(value)) {
+    return value.toString();
+  }
+
+  if (Math.abs(value) < 0.01) {
+    return value.toExponential(1);
+  }
+
+  return value.toFixed(3);
 }
