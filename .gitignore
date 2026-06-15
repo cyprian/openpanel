@@ -1,4 +1,5 @@
 .secrets
+ps.txt
 packages/db/src/generated/prisma
 packages/db/code-migrations/*.sql
 **/.open-next
