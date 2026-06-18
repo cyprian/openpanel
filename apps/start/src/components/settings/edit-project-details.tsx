@@ -27,6 +27,7 @@ const validator = zProject.pick({
   cors: true,
   crossDomain: true,
   allowUnsafeRevenueTracking: true,
+  enableLocationLookup: true,
 });
 type IForm = z.infer<typeof validator>;
 
@@ -41,6 +42,7 @@ export default function EditProjectDetails({ project }: Props) {
       cors: project.cors,
       crossDomain: project.crossDomain,
       allowUnsafeRevenueTracking: project.allowUnsafeRevenueTracking,
+      enableLocationLookup: project.enableLocationLookup,
     },
   });
   const trpc = useTRPC();
@@ -190,6 +192,29 @@ export default function EditProjectDetails({ project }: Props) {
                     <div>Allow "unsafe" revenue tracking</div>
                     <div className="font-normal text-muted-foreground">
                       With this enabled, you can track revenue from client code.
+                    </div>
+                  </CheckboxInput>
+                </WithLabel>
+              );
+            }}
+          />
+
+          <Controller
+            name="enableLocationLookup"
+            control={form.control}
+            render={({ field }) => {
+              return (
+                <WithLabel label="Location lookup API">
+                  <CheckboxInput
+                    ref={field.ref}
+                    onBlur={field.onBlur}
+                    defaultChecked={field.value}
+                    onCheckedChange={field.onChange}
+                  >
+                    <div>Enable location lookup API</div>
+                    <div className="font-normal text-muted-foreground">
+                      Allow API clients with a client secret to resolve their
+                      request country.
                     </div>
                   </CheckboxInput>
                 </WithLabel>

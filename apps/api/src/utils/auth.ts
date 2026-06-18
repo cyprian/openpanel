@@ -210,6 +210,52 @@ export async function validateExportRequest(
   return client;
 }
 
+export async function validateLocationRequest(
+  headers: RawRequestDefaultExpression['headers']
+): Promise<IServiceClientWithProject> {
+  const clientId = headers['openpanel-client-id'] as string;
+  const clientSecret = (headers['openpanel-client-secret'] as string) || '';
+
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      clientId
+    )
+  ) {
+    throw new Error('Location: Client ID must be a valid UUIDv4');
+  }
+
+  const client = await getClientByIdCached(clientId);
+
+  if (!client) {
+    throw new Error('Location: Invalid client id');
+  }
+
+  if (!client.project) {
+    throw new Error('Location: Client has no project');
+  }
+
+  if (!client.secret) {
+    throw new Error('Location: Client has no secret');
+  }
+
+  if (!clientSecret) {
+    throw new Error('Location: Missing client secret');
+  }
+
+  const isVerified = await getCache(
+    `client:auth:${clientId}:${Buffer.from(clientSecret).toString('base64')}`,
+    60 * 5,
+    async () => await verifyPassword(clientSecret, client.secret!),
+    true
+  );
+
+  if (!isVerified) {
+    throw new Error('Location: Invalid client secret');
+  }
+
+  return client;
+}
+
 export async function validateImportRequest(
   headers: RawRequestDefaultExpression['headers']
 ): Promise<IServiceClientWithProject> {

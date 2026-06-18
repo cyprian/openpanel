@@ -75,6 +75,7 @@ export const projectRouter = createTRPCRouter({
           name: input.name,
           crossDomain: input.crossDomain,
           allowUnsafeRevenueTracking: input.allowUnsafeRevenueTracking,
+          enableLocationLookup: input.enableLocationLookup,
           filters:
             input.filters === undefined ? undefined : input.filters || [],
           domain:
@@ -141,6 +142,7 @@ export const projectRouter = createTRPCRouter({
           cors: input.cors,
           crossDomain: false,
           allowUnsafeRevenueTracking: false,
+          enableLocationLookup: false,
           filters: [],
           clients: {
             create: data,

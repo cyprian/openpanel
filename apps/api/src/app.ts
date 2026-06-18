@@ -50,6 +50,7 @@ import gscCallbackRouter from './routes/gsc-callback.router';
 import importRouter from './routes/import.router';
 import insightsRouter from './routes/insights.router';
 import liveRouter from './routes/live.router';
+import locationRouter from './routes/location.router';
 import manageRouter from './routes/manage.router';
 import mcpRouter from './routes/mcp.router';
 import miscRouter from './routes/misc.router';
@@ -337,6 +338,7 @@ export async function buildApp(
           { name: 'Export', description: 'Export data' },
           { name: 'Import', description: 'Import historical data' },
           { name: 'Insights', description: 'Query analytics data' },
+          { name: 'Location', description: 'Resolve request location metadata' },
           { name: 'Manage', description: 'Manage projects and clients' },
           { name: 'Event', description: 'Legacy event ingestion (deprecated, use /track)' },
         ],
@@ -361,6 +363,7 @@ export async function buildApp(
     instance.register(exportRouter, { prefix: '/export' });
     instance.register(importRouter, { prefix: '/import' });
     instance.register(insightsRouter, { prefix: '/insights' });
+    instance.register(locationRouter, { prefix: '/location' });
     instance.register(trackRouter, { prefix: '/track' });
     instance.register(manageRouter, { prefix: '/manage' });
     instance.register(toolsRouter, { prefix: '/tools' });

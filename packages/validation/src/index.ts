@@ -528,6 +528,7 @@ export const zProject = z.object({
   cors: z.array(z.string()).default([]),
   crossDomain: z.boolean().default(false),
   allowUnsafeRevenueTracking: z.boolean().default(false),
+  enableLocationLookup: z.boolean().default(false),
 });
 export type IProjectEdit = z.infer<typeof zProject>;
 
@@ -539,6 +540,7 @@ export const zProjectUpdate = z.object({
   cors: z.array(z.string()).optional(),
   crossDomain: z.boolean().optional(),
   allowUnsafeRevenueTracking: z.boolean().optional(),
+  enableLocationLookup: z.boolean().optional(),
 });
 export type IProjectUpdate = z.infer<typeof zProjectUpdate>;
 

@@ -240,6 +240,7 @@ model Project {
   cors                       String[]      @default([])
   crossDomain                Boolean       @default(false)
   allowUnsafeRevenueTracking Boolean       @default(false)
+  enableLocationLookup       Boolean       @default(false)
   /// [IPrismaProjectFilters]
   filters                    Json          @default("[]")
 
