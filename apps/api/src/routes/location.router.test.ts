@@ -137,11 +137,34 @@ describe('GET /location', () => {
   });
 
   it('returns the request country when enabled', async () => {
+    vi.mocked(getGeoLocation).mockResolvedValue({
+      country: 'ES',
+      city: undefined,
+      region: undefined,
+      latitude: undefined,
+      longitude: undefined,
+    });
+
     const res = await getLocation();
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ country: 'US' });
+    expect(res.json()).toEqual({
+      country: 'Spain',
+      country_code: 'ES',
+      is_eu: true,
+    });
     expect(getGeoLocation).toHaveBeenCalledWith('8.8.8.8');
+  });
+
+  it('returns non-EU metadata for a non-EU country', async () => {
+    const res = await getLocation();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      country: 'United States',
+      country_code: 'US',
+      is_eu: false,
+    });
   });
 
   it('returns null when the request country cannot be resolved', async () => {
@@ -156,6 +179,10 @@ describe('GET /location', () => {
     const res = await getLocation();
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ country: null });
+    expect(res.json()).toEqual({
+      country: null,
+      country_code: null,
+      is_eu: false,
+    });
   });
 });

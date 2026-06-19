@@ -31,10 +31,12 @@ const locationRouter: FastifyPluginAsyncZodOpenApi = async (fastify) => {
     url: '/',
     schema: {
       tags: TAGS,
-      description: 'Resolve the current request IP address to an ISO 3166-1 alpha-2 country code.',
+      description: 'Resolve the current request IP address to country metadata.',
       response: {
         200: z.object({
           country: z.string().nullable(),
+          country_code: z.string().nullable(),
+          is_eu: z.boolean(),
         }),
       },
     },
