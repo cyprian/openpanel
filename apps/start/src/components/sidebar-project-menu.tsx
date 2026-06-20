@@ -63,6 +63,7 @@ export default function SidebarProjectMenu({
           icon={GitCompareIcon}
           label="Compare"
         />
+        <SidebarLink href={'/ml/docs'} icon={BookOpenIcon} label="Docs" />
         <SidebarLink
           href={'/dashboards'}
           icon={LayoutPanelTopIcon}

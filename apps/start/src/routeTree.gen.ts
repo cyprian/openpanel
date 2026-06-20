@@ -69,6 +69,7 @@ import { Route as AppOrganizationIdProjectIdReportsReportIdRouteImport } from '.
 import { Route as AppOrganizationIdProjectIdProfilesTabsRouteImport } from './routes/_app.$organizationId.$projectId.profiles._tabs'
 import { Route as AppOrganizationIdProjectIdNotificationsTabsRouteImport } from './routes/_app.$organizationId.$projectId.notifications._tabs'
 import { Route as AppOrganizationIdProjectIdMlRunsRouteImport } from './routes/_app.$organizationId.$projectId.ml.runs'
+import { Route as AppOrganizationIdProjectIdMlDocsRouteImport } from './routes/_app.$organizationId.$projectId.ml.docs'
 import { Route as AppOrganizationIdProjectIdMlCompareRouteImport } from './routes/_app.$organizationId.$projectId.ml.compare'
 import { Route as AppOrganizationIdProjectIdEventsTabsRouteImport } from './routes/_app.$organizationId.$projectId.events._tabs'
 import { Route as AppOrganizationIdProjectIdDashboardsDashboardIdRouteImport } from './routes/_app.$organizationId.$projectId.dashboards_.$dashboardId'
@@ -514,6 +515,12 @@ const AppOrganizationIdProjectIdMlRunsRoute =
     path: '/runs',
     getParentRoute: () => AppOrganizationIdProjectIdMlRoute,
   } as any)
+const AppOrganizationIdProjectIdMlDocsRoute =
+  AppOrganizationIdProjectIdMlDocsRouteImport.update({
+    id: '/docs',
+    path: '/docs',
+    getParentRoute: () => AppOrganizationIdProjectIdMlRoute,
+  } as any)
 const AppOrganizationIdProjectIdMlCompareRoute =
   AppOrganizationIdProjectIdMlCompareRouteImport.update({
     id: '/compare',
@@ -782,6 +789,7 @@ export interface FileRoutesByFullPath {
   '/$organizationId/$projectId/dashboards/$dashboardId': typeof AppOrganizationIdProjectIdDashboardsDashboardIdRoute
   '/$organizationId/$projectId/events': typeof AppOrganizationIdProjectIdEventsTabsRouteWithChildren
   '/$organizationId/$projectId/ml/compare': typeof AppOrganizationIdProjectIdMlCompareRoute
+  '/$organizationId/$projectId/ml/docs': typeof AppOrganizationIdProjectIdMlDocsRoute
   '/$organizationId/$projectId/ml/runs': typeof AppOrganizationIdProjectIdMlRunsRouteWithChildren
   '/$organizationId/$projectId/notifications': typeof AppOrganizationIdProjectIdNotificationsTabsRouteWithChildren
   '/$organizationId/$projectId/profiles': typeof AppOrganizationIdProjectIdProfilesTabsRouteWithChildren
@@ -874,6 +882,7 @@ export interface FileRoutesByTo {
   '/$organizationId/$projectId/dashboards/$dashboardId': typeof AppOrganizationIdProjectIdDashboardsDashboardIdRoute
   '/$organizationId/$projectId/events': typeof AppOrganizationIdProjectIdEventsTabsIndexRoute
   '/$organizationId/$projectId/ml/compare': typeof AppOrganizationIdProjectIdMlCompareRoute
+  '/$organizationId/$projectId/ml/docs': typeof AppOrganizationIdProjectIdMlDocsRoute
   '/$organizationId/$projectId/ml/runs': typeof AppOrganizationIdProjectIdMlRunsRouteWithChildren
   '/$organizationId/$projectId/notifications': typeof AppOrganizationIdProjectIdNotificationsTabsIndexRoute
   '/$organizationId/$projectId/profiles': typeof AppOrganizationIdProjectIdProfilesTabsIndexRoute
@@ -967,6 +976,7 @@ export interface FileRoutesById {
   '/_app/$organizationId/$projectId/events': typeof AppOrganizationIdProjectIdEventsRouteWithChildren
   '/_app/$organizationId/$projectId/events/_tabs': typeof AppOrganizationIdProjectIdEventsTabsRouteWithChildren
   '/_app/$organizationId/$projectId/ml/compare': typeof AppOrganizationIdProjectIdMlCompareRoute
+  '/_app/$organizationId/$projectId/ml/docs': typeof AppOrganizationIdProjectIdMlDocsRoute
   '/_app/$organizationId/$projectId/ml/runs': typeof AppOrganizationIdProjectIdMlRunsRouteWithChildren
   '/_app/$organizationId/$projectId/notifications': typeof AppOrganizationIdProjectIdNotificationsRouteWithChildren
   '/_app/$organizationId/$projectId/notifications/_tabs': typeof AppOrganizationIdProjectIdNotificationsTabsRouteWithChildren
@@ -1069,6 +1079,7 @@ export interface FileRouteTypes {
     | '/$organizationId/$projectId/dashboards/$dashboardId'
     | '/$organizationId/$projectId/events'
     | '/$organizationId/$projectId/ml/compare'
+    | '/$organizationId/$projectId/ml/docs'
     | '/$organizationId/$projectId/ml/runs'
     | '/$organizationId/$projectId/notifications'
     | '/$organizationId/$projectId/profiles'
@@ -1161,6 +1172,7 @@ export interface FileRouteTypes {
     | '/$organizationId/$projectId/dashboards/$dashboardId'
     | '/$organizationId/$projectId/events'
     | '/$organizationId/$projectId/ml/compare'
+    | '/$organizationId/$projectId/ml/docs'
     | '/$organizationId/$projectId/ml/runs'
     | '/$organizationId/$projectId/notifications'
     | '/$organizationId/$projectId/profiles'
@@ -1253,6 +1265,7 @@ export interface FileRouteTypes {
     | '/_app/$organizationId/$projectId/events'
     | '/_app/$organizationId/$projectId/events/_tabs'
     | '/_app/$organizationId/$projectId/ml/compare'
+    | '/_app/$organizationId/$projectId/ml/docs'
     | '/_app/$organizationId/$projectId/ml/runs'
     | '/_app/$organizationId/$projectId/notifications'
     | '/_app/$organizationId/$projectId/notifications/_tabs'
@@ -1807,6 +1820,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOrganizationIdProjectIdMlRunsRouteImport
       parentRoute: typeof AppOrganizationIdProjectIdMlRoute
     }
+    '/_app/$organizationId/$projectId/ml/docs': {
+      id: '/_app/$organizationId/$projectId/ml/docs'
+      path: '/docs'
+      fullPath: '/$organizationId/$projectId/ml/docs'
+      preLoaderRoute: typeof AppOrganizationIdProjectIdMlDocsRouteImport
+      parentRoute: typeof AppOrganizationIdProjectIdMlRoute
+    }
     '/_app/$organizationId/$projectId/ml/compare': {
       id: '/_app/$organizationId/$projectId/ml/compare'
       path: '/compare'
@@ -2108,6 +2128,7 @@ const AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteWithChildren =
 
 interface AppOrganizationIdProjectIdMlRouteChildren {
   AppOrganizationIdProjectIdMlCompareRoute: typeof AppOrganizationIdProjectIdMlCompareRoute
+  AppOrganizationIdProjectIdMlDocsRoute: typeof AppOrganizationIdProjectIdMlDocsRoute
   AppOrganizationIdProjectIdMlRunsRoute: typeof AppOrganizationIdProjectIdMlRunsRouteWithChildren
   AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute: typeof AppOrganizationIdProjectIdMlProjectsMlProjectIdRouteWithChildren
 }
@@ -2116,6 +2137,8 @@ const AppOrganizationIdProjectIdMlRouteChildren: AppOrganizationIdProjectIdMlRou
   {
     AppOrganizationIdProjectIdMlCompareRoute:
       AppOrganizationIdProjectIdMlCompareRoute,
+    AppOrganizationIdProjectIdMlDocsRoute:
+      AppOrganizationIdProjectIdMlDocsRoute,
     AppOrganizationIdProjectIdMlRunsRoute:
       AppOrganizationIdProjectIdMlRunsRouteWithChildren,
     AppOrganizationIdProjectIdMlProjectsMlProjectIdRoute:
