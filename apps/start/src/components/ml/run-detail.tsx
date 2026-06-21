@@ -3,6 +3,13 @@ import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -19,10 +26,15 @@ import {
 } from '@/components/charts/chart-tooltip';
 import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
 import { useTRPC } from '@/integrations/trpc/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
-import { ArrowLeftIcon } from 'lucide-react';
+import {
+  ArrowLeftIcon,
+  BracesIcon,
+  DatabaseIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import type React from 'react';
 import { useMemo, useState } from 'react';
 import {
@@ -54,24 +66,33 @@ export function MlRunDetail({
   const metricNames = useQuery(
     trpc.ml.metricNames.queryOptions({ projectId, runId })
   );
-  const [metric, setMetric] = useState('');
   const [evaluationSearch, setEvaluationSearch] = useState('');
   const [evaluationPage, setEvaluationPage] = useState(1);
   const [evaluationSortBy, setEvaluationSortBy] = useState('createdAt');
   const [evaluationSortDirection, setEvaluationSortDirection] = useState<
     'asc' | 'desc'
   >('desc');
-  const selectedMetric = metric || metricNames.data?.[0]?.metric || '';
-  const series = useQuery({
-    ...trpc.ml.metricSeries.queryOptions({
-      projectId,
-      runIds: [runId],
-      metric: selectedMetric,
-    }),
-    enabled: !!selectedMetric,
+  const metricItems = metricNames.data ?? [];
+  const metricSeriesQueries = useQueries({
+    queries: metricItems.map((item) =>
+      trpc.ml.metricSeries.queryOptions({
+        projectId,
+        runIds: [runId],
+        metric: item.metric,
+      })
+    ),
   });
   const images = useQuery({
     ...trpc.ml.images.queryOptions({ projectId, runId, limit: 100 }),
+    enabled: !!run.data,
+  });
+  const evaluationSummary = useQuery({
+    ...trpc.ml.evaluationRows.queryOptions({
+      projectId,
+      runId,
+      page: 1,
+      pageSize: 1,
+    }),
     enabled: !!run.data,
   });
   const evaluationRows = useQuery({
@@ -90,6 +111,8 @@ export function MlRunDetail({
   const config = normalizeRecord(run.data?.config);
   const metadata = normalizeRecord(run.data?.metadata);
   const mlProjectId = run.data?.mlProjectId ?? fallbackMlProjectId;
+  const hasImages = (images.data?.length ?? 0) > 0;
+  const hasEvaluationRows = (evaluationSummary.data?.total ?? 0) > 0;
 
   return (
     <PageContainer>
@@ -109,9 +132,27 @@ export function MlRunDetail({
         title={run.data?.name ?? 'Run'}
         description={run.data ? run.data.mlProject.name : undefined}
         className="mb-6"
+        actions={
+          run.data ? (
+            <>
+              <JsonDialogButton
+                emptyText="No config logged."
+                icon={BracesIcon}
+                title="Config"
+                value={config}
+              />
+              <JsonDialogButton
+                emptyText="No metadata logged."
+                icon={DatabaseIcon}
+                title="Metadata"
+                value={metadata}
+              />
+            </>
+          ) : null
+        }
       />
       {run.data && (
-        <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <section className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <InfoCard label="Status">
             <MlStatusBadge status={run.data.status} />
           </InfoCard>
@@ -124,7 +165,7 @@ export function MlRunDetail({
           <InfoCard label="Updated">
             {formatDistanceToNow(run.data.updatedAt, { addSuffix: true })}
           </InfoCard>
-        </div>
+        </section>
       )}
       {run.data && run.data.tags.length > 0 && (
         <div className="mb-6 flex flex-wrap gap-2">
@@ -141,77 +182,52 @@ export function MlRunDetail({
           <p className="whitespace-pre-wrap text-sm">{run.data.notes}</p>
         </section>
       )}
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <section className="rounded-md border bg-card p-4">
-          <div className="mb-3 font-medium">Final metrics</div>
-          <div className="col gap-2">
-            {Object.entries(summary).map(([key, value]) => (
-              <button
-                key={key}
-                type="button"
-                className="row rounded-md px-2 py-1 text-left hover:bg-def-100"
-                onClick={() => setMetric(key)}
-              >
-                <span className="flex-1 text-muted-foreground">{key}</span>
-                <span className="font-medium">{formatNumber(value)}</span>
-              </button>
-            ))}
-            {Object.keys(summary).length === 0 && (
-              <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
-                No scalar metrics have been logged for this run yet.
-              </div>
-            )}
+      <section className="mb-4 rounded-md border bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div>
+            <div className="font-medium">Final metrics</div>
+            <div className="text-muted-foreground text-xs">
+              Latest scalar values logged for this run
+            </div>
           </div>
-        </section>
-        <section className="rounded-md border bg-card p-4">
-          <div className="mb-4 row gap-2">
-            <div className="font-medium">Metric chart</div>
-            <select
-              className="ml-auto rounded-md border bg-background px-2 py-1 text-sm"
-              value={selectedMetric}
-              onChange={(event) => setMetric(event.target.value)}
-              disabled={(metricNames.data ?? []).length === 0}
-            >
-              {(metricNames.data ?? []).map((item) => (
-                <option key={item.metric} value={item.metric}>
-                  {item.metric}
-                </option>
-              ))}
-            </select>
-          </div>
-          <MetricChart data={series.data ?? []} metric={selectedMetric} />
-        </section>
-      </div>
-      <ImageGallery images={images.data ?? []} />
-      <EvaluationTable
-        data={evaluationRows.data}
-        isLoading={evaluationRows.isLoading}
-        onPageChange={setEvaluationPage}
-        onSearchChange={(value) => {
-          setEvaluationSearch(value);
-          setEvaluationPage(1);
-        }}
-        onSortByChange={(value) => {
-          setEvaluationSortBy(value);
-          setEvaluationPage(1);
-        }}
-        onSortDirectionChange={(value) => {
-          setEvaluationSortDirection(value);
-          setEvaluationPage(1);
-        }}
-        page={evaluationPage}
-        search={evaluationSearch}
-        sortBy={evaluationSortBy}
-        sortDirection={evaluationSortDirection}
+          {Object.keys(summary).length > 0 && (
+            <Badge className="ml-auto" variant="outline">
+              {Object.keys(summary).length} metrics
+            </Badge>
+          )}
+        </div>
+        <FinalMetricsGrid summary={summary} />
+      </section>
+      <MetricChartsSection
+        isLoadingMetricNames={metricNames.isLoading}
+        metricItems={metricItems}
+        queries={metricSeriesQueries}
+        summary={summary}
       />
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <JsonPanel title="Config" value={config} emptyText="No config logged." />
-        <JsonPanel
-          title="Metadata"
-          value={metadata}
-          emptyText="No metadata logged."
+      {hasImages && <ImageGallery images={images.data ?? []} />}
+      {hasEvaluationRows && (
+        <EvaluationTable
+          data={evaluationRows.data}
+          isLoading={evaluationRows.isLoading}
+          onPageChange={setEvaluationPage}
+          onSearchChange={(value) => {
+            setEvaluationSearch(value);
+            setEvaluationPage(1);
+          }}
+          onSortByChange={(value) => {
+            setEvaluationSortBy(value);
+            setEvaluationPage(1);
+          }}
+          onSortDirectionChange={(value) => {
+            setEvaluationSortDirection(value);
+            setEvaluationPage(1);
+          }}
+          page={evaluationPage}
+          search={evaluationSearch}
+          sortBy={evaluationSortBy}
+          sortDirection={evaluationSortDirection}
         />
-      </div>
+      )}
     </PageContainer>
   );
 }
@@ -255,6 +271,13 @@ type MlEvaluationRowsData = {
   totalPages: number;
 };
 
+type MlMetricSeriesPoint = {
+  run_id: string;
+  step: number;
+  value: number;
+  created_at: string;
+};
+
 type ImageGroup = {
   key: string;
   step: number | null;
@@ -262,6 +285,110 @@ type ImageGroup = {
   images: MlRunImage[];
   byKind: Partial<Record<(typeof IMAGE_KIND_COLUMNS)[number], MlRunImage[]>>;
 };
+
+type MetricSeriesQueryResult = {
+  data?: MlMetricSeriesPoint[];
+  isLoading: boolean;
+};
+
+function FinalMetricsGrid({ summary }: { summary: Record<string, number> }) {
+  const entries = Object.entries(summary);
+
+  if (entries.length === 0) {
+    return (
+      <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
+        No scalar metrics have been logged for this run yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {entries.map(([key, value]) => (
+        <article className="rounded-md border bg-background p-3" key={key}>
+          <div className="truncate text-muted-foreground text-xs">{key}</div>
+          <div className="mt-1 truncate font-mono font-semibold text-lg">
+            {formatNumber(value)}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function MetricChartsSection({
+  isLoadingMetricNames,
+  metricItems,
+  queries,
+  summary,
+}: {
+  isLoadingMetricNames: boolean;
+  metricItems: Array<{ metric: string }>;
+  queries: MetricSeriesQueryResult[];
+  summary: Record<string, number>;
+}) {
+  return (
+    <section className="rounded-md border bg-card p-4">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div>
+          <div className="font-medium">Metric trends</div>
+          <div className="text-muted-foreground text-xs">
+            One chart per logged metric
+          </div>
+        </div>
+        {metricItems.length > 0 && (
+          <Badge className="ml-auto" variant="outline">
+            {metricItems.length} charts
+          </Badge>
+        )}
+      </div>
+      {isLoadingMetricNames ? (
+        <div className="center-center h-40 text-muted-foreground text-sm">
+          Loading metrics...
+        </div>
+      ) : metricItems.length === 0 ? (
+        <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
+          No metric series have been logged for this run yet.
+        </div>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-2">
+          {metricItems.map((item, index) => {
+            const query = queries[index];
+            const data = query?.data ?? [];
+            const latestValue =
+              summary[item.metric] ?? getLatestMetricSeriesValue(data);
+
+            return (
+              <article
+                className="overflow-hidden rounded-md border bg-background"
+                key={item.metric}
+              >
+                <div className="flex min-h-14 flex-wrap items-center gap-2 border-b p-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{item.metric}</div>
+                    <div className="text-muted-foreground text-xs">
+                      {data.length} points
+                    </div>
+                  </div>
+                  <div className="rounded-md bg-def-100 px-2 py-1 text-right font-mono text-sm">
+                    {formatMetricValue(latestValue)}
+                  </div>
+                </div>
+                {query?.isLoading ? (
+                  <div className="center-center h-[280px] text-muted-foreground text-sm">
+                    Loading chart...
+                  </div>
+                ) : (
+                  <MetricChart data={data} metric={item.metric} />
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function EvaluationTable({
   data,
@@ -353,7 +480,9 @@ function EvaluationTable({
         </div>
       ) : rows.length === 0 ? (
         <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
-          No visual evaluation rows have been logged for this run yet.
+          {search
+            ? 'No evaluation rows match this search.'
+            : 'No visual evaluation rows have been logged for this run yet.'}
         </div>
       ) : (
         <>
@@ -595,28 +724,41 @@ function InfoCard({
   );
 }
 
-function JsonPanel({
+function JsonDialogButton({
   title,
   value,
   emptyText,
+  icon,
 }: {
   title: string;
   value: Record<string, unknown>;
   emptyText: string;
+  icon: LucideIcon;
 }) {
   const isEmpty = Object.keys(value).length === 0;
 
   return (
-    <section className="rounded-md border bg-card p-4">
-      <div className="mb-3 font-medium">{title}</div>
-      {isEmpty ? (
-        <div className="text-muted-foreground text-sm">{emptyText}</div>
-      ) : (
-        <pre className="max-h-[320px] overflow-auto rounded-md bg-def-100 p-3 text-xs">
-          {JSON.stringify(value, null, 2)}
-        </pre>
-      )}
-    </section>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button icon={icon} variant="outline">
+          {title}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        {isEmpty ? (
+          <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
+            {emptyText}
+          </div>
+        ) : (
+          <pre className="max-h-[70vh] overflow-auto rounded-md bg-background p-3 text-xs">
+            {JSON.stringify(value, null, 2)}
+          </pre>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -808,6 +950,12 @@ function getNumericMetric(value: unknown, key: string) {
 
 function formatMetricValue(value: number | null) {
   return typeof value === 'number' ? formatNumber(value) : '-';
+}
+
+function getLatestMetricSeriesValue(data: MlMetricSeriesPoint[]) {
+  const latestPoint = data.at(-1);
+
+  return typeof latestPoint?.value === 'number' ? latestPoint.value : null;
 }
 
 function formatAxisNumber(value: number) {
