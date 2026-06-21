@@ -42,24 +42,49 @@ export const Route = createFileRoute(
   }),
 });
 
-const COLORS = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#ea580c'];
+const COLORS = [
+  '#2563eb',
+  '#16a34a',
+  '#dc2626',
+  '#9333ea',
+  '#ea580c',
+  '#0891b2',
+  '#c026d3',
+  '#65a30d',
+  '#db2777',
+  '#4f46e5',
+  '#ca8a04',
+  '#0d9488',
+];
 
 function Component() {
   const { projectId } = Route.useParams();
   const trpc = useTRPC();
   const runs = useQuery(trpc.ml.runs.queryOptions({ projectId }));
   const metricNames = useQuery(trpc.ml.metricNames.queryOptions({ projectId }));
-  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [selectedRunIds, setSelectedRunIds] = useState<string[] | null>(null);
   const [metric, setMetric] = useState('');
   const selectedMetric = metric || metricNames.data?.[0]?.metric || '';
   const availableRuns = runs.data ?? [];
-  const effectiveRunIds =
-    selectedRunIds.length > 0
-      ? selectedRunIds
-      : availableRuns.slice(0, 3).map((run) => run.id);
+  const availableRunIds = availableRuns.map((run) => run.id);
+  const selectedRunIdSet = new Set(selectedRunIds ?? availableRunIds);
+  const effectiveRunIds = availableRuns
+    .filter((run) => selectedRunIdSet.has(run.id))
+    .map((run) => run.id);
   const selectedRuns = availableRuns.filter((run) =>
     effectiveRunIds.includes(run.id)
   );
+  const runColors = useMemo(
+    () =>
+      new Map(
+        availableRuns.map((run, index) => [run.id, getRunColor(index)] as const)
+      ),
+    [availableRuns]
+  );
+  const allRunsChecked =
+    availableRuns.length > 0 && effectiveRunIds.length === availableRuns.length;
+  const someRunsChecked = effectiveRunIds.length > 0 && !allRunsChecked;
+  const compareProjectName = getSingleMlProjectName(availableRuns);
   const series = useQuery({
     ...trpc.ml.metricSeries.queryOptions({
       projectId,
@@ -88,16 +113,34 @@ function Component() {
   return (
     <PageContainer>
       <PageHeader
-        title="Compare Runs"
+        title={
+          compareProjectName
+            ? `Compare Runs for: ${compareProjectName}`
+            : 'Compare Runs'
+        }
         description="Overlay training metrics and compare final values, hyperparameters, and metadata."
         className="mb-8"
       />
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <section className="rounded-md border bg-card p-4">
-          <div className="mb-3 font-medium">Runs</div>
+          <div className="mb-3 row justify-between gap-3">
+            <div className="font-medium">Runs</div>
+            {availableRuns.length > 0 && (
+              <label className="row cursor-pointer gap-2 text-muted-foreground text-sm">
+                <Checkbox
+                  checked={someRunsChecked ? 'indeterminate' : allRunsChecked}
+                  onCheckedChange={(value) => {
+                    setSelectedRunIds(value === true ? null : []);
+                  }}
+                />
+                <span>Check all</span>
+              </label>
+            )}
+          </div>
           <div className="col max-h-[480px] gap-2 overflow-auto pr-1">
-            {availableRuns.map((run) => {
+            {availableRuns.map((run, index) => {
               const checked = effectiveRunIds.includes(run.id);
+              const color = runColors.get(run.id) ?? getRunColor(index);
               return (
                 <label
                   key={run.id}
@@ -107,19 +150,21 @@ function Component() {
                     checked={checked}
                     onCheckedChange={(value) => {
                       const isChecked = value === true;
-                      setSelectedRunIds((current) =>
-                        isChecked
-                          ? [...new Set([...current, run.id])].slice(0, 5)
-                          : current.filter((id) => id !== run.id)
-                      );
+                      setSelectedRunIds((current) => {
+                        const currentIds = current ?? availableRunIds;
+                        return isChecked
+                          ? [...new Set([...currentIds, run.id])]
+                          : currentIds.filter((id) => id !== run.id);
+                      });
                     }}
+                  />
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: color }}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">
                       {run.name}
-                    </span>
-                    <span className="block truncate text-muted-foreground text-xs">
-                      {run.mlProject.name}
                     </span>
                     <MlStatusBadge status={run.status} className="mt-1" />
                   </span>
@@ -155,7 +200,11 @@ function Component() {
           <CompareMetricChart
             data={series.data ?? []}
             metric={selectedMetric}
-            runs={selectedRuns}
+            runs={selectedRuns.map((run) => ({
+              id: run.id,
+              name: run.name,
+              color: runColors.get(run.id) ?? COLORS[0],
+            }))}
           />
         </section>
       </div>
@@ -175,7 +224,7 @@ function Component() {
           }}
         />
       </section>
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mt-4 grid gap-4">
         <section className="rounded-md border bg-card p-4">
           <div className="mb-4 font-medium">Hyperparameters</div>
           <ComparisonTable
@@ -220,20 +269,20 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Key</TableHead>
-            {runs.map((run) => (
-              <TableHead key={run.id}>{run.name}</TableHead>
+            <TableHead>Experiment</TableHead>
+            {keys.map((key) => (
+              <TableHead key={key}>{key}</TableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {keys.map((key) => (
-            <TableRow key={key}>
-              <TableCell className="font-medium">{key}</TableCell>
-              {runs.map((run) => {
+          {runs.map((run) => (
+            <TableRow key={run.id}>
+              <TableCell className="font-medium">{run.name}</TableCell>
+              {keys.map((key) => {
                 const badge = getBadge?.(key, run);
                 return (
-                  <TableCell key={run.id}>
+                  <TableCell key={key}>
                     <span className="row gap-2">
                       <span>{formatValue(getValues(run)[key])}</span>
                       {badge && <Badge variant="success">{badge}</Badge>}
@@ -256,7 +305,7 @@ function CompareMetricChart({
 }: {
   data: Array<{ run_id: string; step: number; value: number }>;
   metric: string;
-  runs: Array<{ id: string; name: string }>;
+  runs: Array<{ id: string; name: string; color: string }>;
 }) {
   const chartData = useMemo(() => {
     const rows = new Map<number, { step: number } & Record<string, number>>();
@@ -319,46 +368,32 @@ function CompareMetricChart({
               content={<CompareMetricTooltip metric={metric} />}
               cursor={{ stroke: COLORS[0], strokeDasharray: '4 4' }}
             />
-            {runs.map((run, index) => {
-              const color = COLORS[index % COLORS.length];
-              return (
-                <Line
-                  activeDot={{
-                    r: 5,
-                    fill: color,
-                    stroke: 'var(--background)',
-                    strokeWidth: 2,
-                  }}
-                  connectNulls
-                  dataKey={run.id}
-                  dot={{
-                    r: 2,
-                    fill: color,
-                    stroke: color,
-                    strokeWidth: 1,
-                  }}
-                  isAnimationActive={false}
-                  key={run.id}
-                  name={run.name}
-                  stroke={color}
-                  strokeWidth={2.5}
-                  type="monotone"
-                />
-              );
-            })}
+            {runs.map((run) => (
+              <Line
+                activeDot={{
+                  r: 5,
+                  fill: run.color,
+                  stroke: 'var(--background)',
+                  strokeWidth: 2,
+                }}
+                connectNulls
+                dataKey={run.id}
+                dot={{
+                  r: 2,
+                  fill: run.color,
+                  stroke: run.color,
+                  strokeWidth: 1,
+                }}
+                isAnimationActive={false}
+                key={run.id}
+                name={run.name}
+                stroke={run.color}
+                strokeWidth={2.5}
+                type="monotone"
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
-      </div>
-      <div className="mt-3 row flex-wrap gap-3 text-sm">
-        {runs.map((run, index) => (
-          <div key={run.id} className="row gap-2">
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: COLORS[index % COLORS.length] }}
-            />
-            <span className="text-muted-foreground">{run.name}</span>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -437,6 +472,22 @@ function getBestRunId(
     }
     return item.value > best.value ? item : best;
   }).runId;
+}
+
+function getRunColor(index: number) {
+  return COLORS[index % COLORS.length];
+}
+
+function getSingleMlProjectName(
+  runs: Array<{ mlProject: { id: string; name: string } }>
+) {
+  const projectNamesById = new Map(
+    runs.map((run) => [run.mlProject.id, run.mlProject.name] as const)
+  );
+
+  return projectNamesById.size === 1
+    ? [...projectNamesById.values()][0]
+    : null;
 }
 
 function formatValue(value: unknown) {
