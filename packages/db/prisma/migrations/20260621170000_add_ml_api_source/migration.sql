@@ -6,7 +6,7 @@ ALTER TABLE "ml_runs" ADD COLUMN "clientId" UUID;
 
 -- Backfill rows only when the analytics project has a single unambiguous API client.
 WITH single_project_clients AS (
-  SELECT "projectId", MIN("id") AS "clientId"
+  SELECT "projectId", MIN("id"::text)::uuid AS "clientId"
   FROM "clients"
   WHERE "projectId" IS NOT NULL
   GROUP BY "projectId"
@@ -18,7 +18,7 @@ FROM single_project_clients
 WHERE "ml_projects"."projectId" = single_project_clients."projectId";
 
 WITH single_project_clients AS (
-  SELECT "projectId", MIN("id") AS "clientId"
+  SELECT "projectId", MIN("id"::text)::uuid AS "clientId"
   FROM "clients"
   WHERE "projectId" IS NOT NULL
   GROUP BY "projectId"
