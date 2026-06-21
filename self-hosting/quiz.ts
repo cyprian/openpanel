@@ -11,6 +11,7 @@ let envs = {
   DATABASE_URL: '',
   DOMAIN_NAME: '',
   COOKIE_SECRET: generatePassword(32),
+  PACKAGE_REGISTRY_TOKEN: generatePassword(48),
   RESEND_API_KEY: '',
   EMAIL_SENDER: '',
 };
@@ -151,6 +152,7 @@ function writeEnvFile(envs: EnvVars) {
     .replace('$DATABASE_URL_DIRECT', envs.DATABASE_URL)
     .replace('$DASHBOARD_URL', stripTrailingSlash(envs.DOMAIN_NAME))
     .replace('$API_URL', `${stripTrailingSlash(envs.DOMAIN_NAME)}/api`)
+    .replace('$PACKAGE_REGISTRY_TOKEN', envs.PACKAGE_REGISTRY_TOKEN)
     .replace('$RESEND_API_KEY', envs.RESEND_API_KEY)
     .replace('$EMAIL_SENDER', envs.EMAIL_SENDER);
 
@@ -382,6 +384,7 @@ async function initiateOnboarding() {
       'postgresql://postgres:postgres@op-db:5432/postgres?schema=public',
     DOMAIN_NAME: envs.DOMAIN_NAME,
     COOKIE_SECRET: envs.COOKIE_SECRET,
+    PACKAGE_REGISTRY_TOKEN: envs.PACKAGE_REGISTRY_TOKEN,
     RESEND_API_KEY: envs.RESEND_API_KEY || '',
     EMAIL_SENDER: envs.EMAIL_SENDER || '',
   });

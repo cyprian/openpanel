@@ -8,19 +8,33 @@ cd "$REPO_DIR"
 git pull
 
 if [ -f "$SELF_HOSTING_DIR/caddy/Caddyfile" ] &&
-  ! grep -q "handle /ml\\*" "$SELF_HOSTING_DIR/caddy/Caddyfile"; then
-  echo "Adding ML ingestion route to Caddyfile"
+  { ! grep -q "handle /ml\\*" "$SELF_HOSTING_DIR/caddy/Caddyfile" ||
+    ! grep -q "handle /packages\\*" "$SELF_HOSTING_DIR/caddy/Caddyfile"; }; then
+  echo "Adding API passthrough routes to Caddyfile"
+  HAS_ML=0
+  HAS_PACKAGES=0
+  grep -q "handle /ml\\*" "$SELF_HOSTING_DIR/caddy/Caddyfile" && HAS_ML=1
+  grep -q "handle /packages\\*" "$SELF_HOSTING_DIR/caddy/Caddyfile" && HAS_PACKAGES=1
   awk '
     { print }
     $0 ~ /handle_path \/api\*/ { in_api = 1 }
     in_api && $0 ~ /^[[:space:]]*}[[:space:]]*$/ {
-      print ""
-      print "    handle /ml* {"
-      print "        reverse_proxy op-api:3000"
-      print "    }"
+      if (has_ml == "0") {
+        print ""
+        print "    handle /ml* {"
+        print "        reverse_proxy op-api:3000"
+        print "    }"
+      }
+      if (has_packages == "0") {
+        print ""
+        print "    handle /packages* {"
+        print "        reverse_proxy op-api:3000"
+        print "    }"
+      }
       in_api = 0
     }
-  ' "$SELF_HOSTING_DIR/caddy/Caddyfile" > "$SELF_HOSTING_DIR/caddy/Caddyfile.tmp"
+  ' has_ml="$HAS_ML" has_packages="$HAS_PACKAGES" \
+    "$SELF_HOSTING_DIR/caddy/Caddyfile" > "$SELF_HOSTING_DIR/caddy/Caddyfile.tmp"
   mv "$SELF_HOSTING_DIR/caddy/Caddyfile.tmp" "$SELF_HOSTING_DIR/caddy/Caddyfile"
 fi
 
@@ -39,6 +53,25 @@ if [ -f "$SELF_HOSTING_DIR/docker-compose.yml" ] &&
   mv "$SELF_HOSTING_DIR/docker-compose.yml.tmp" "$SELF_HOSTING_DIR/docker-compose.yml"
   cat >> "$SELF_HOSTING_DIR/docker-compose.yml" <<'EOF'
   op-ml-storage:
+    driver: local
+EOF
+fi
+
+if [ -f "$SELF_HOSTING_DIR/docker-compose.yml" ] &&
+  ! grep -q "op-package-registry-storage" "$SELF_HOSTING_DIR/docker-compose.yml"; then
+  echo "Adding persistent package registry storage volume to docker-compose.yml"
+  awk '
+    /^  op-api:/ { in_api = 1 }
+    in_api && /^[[:space:]]*- op-ml-storage:\/var\/lib\/openpanel\/ml/ {
+      print
+      print "      - op-package-registry-storage:/var/lib/openpanel/packages"
+      next
+    }
+    { print }
+  ' "$SELF_HOSTING_DIR/docker-compose.yml" > "$SELF_HOSTING_DIR/docker-compose.yml.tmp"
+  mv "$SELF_HOSTING_DIR/docker-compose.yml.tmp" "$SELF_HOSTING_DIR/docker-compose.yml"
+  cat >> "$SELF_HOSTING_DIR/docker-compose.yml" <<'EOF'
+  op-package-registry-storage:
     driver: local
 EOF
 fi

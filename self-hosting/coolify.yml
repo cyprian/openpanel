@@ -110,6 +110,8 @@ services:
   opapi:
     image: lindesvard/openpanel-api:latest
     restart: always
+    volumes:
+      - openpanel-package-registry:/var/lib/openpanel/packages
     command: >
       sh -c "
         echo 'Waiting for PostgreSQL to be ready...'
@@ -146,6 +148,7 @@ services:
       - REDIS_URL=redis://default:${SERVICE_PASSWORD_REDIS}@opkv:6379
       - CLICKHOUSE_URL=${OPENPANEL_CLICKHOUSE_URL:-http://opch:8123/openpanel}
       - SERVICE_FQDN_OPAPI=/api
+      - SERVICE_FQDN_OPPACKAGES=/packages
       # Set coolify FQDN domain
       - API_URL=$SERVICE_FQDN_OPAPI
       - DASHBOARD_URL=$SERVICE_FQDN_OPDASHBOARD
@@ -153,6 +156,7 @@ services:
       - COOKIE_SECRET=${SERVICE_BASE64_COOKIESECRET}
       - ALLOW_REGISTRATION=${OPENPANEL_ALLOW_REGISTRATION:-false}
       - ALLOW_INVITATION=${OPENPANEL_ALLOW_INVITATION:-true}
+      - PACKAGE_REGISTRY_TOKEN=${SERVICE_PASSWORD_PACKAGEREGISTRY}
       - EMAIL_SENDER=${OPENPANEL_EMAIL_SENDER}
       - RESEND_API_KEY=${RESEND_API_KEY}
     healthcheck:
@@ -210,3 +214,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+volumes:
+  openpanel-package-registry:
+    driver: local

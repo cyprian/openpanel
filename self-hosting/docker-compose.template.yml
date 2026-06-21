@@ -94,6 +94,7 @@ services:
     restart: always
     volumes:
       - op-ml-storage:/var/lib/openpanel/ml
+      - op-package-registry-storage:/var/lib/openpanel/packages
     command: >
       sh -c "
         echo 'Running migrations...'
@@ -175,4 +176,6 @@ volumes:
   op-proxy-config:
     driver: local
   op-ml-storage:
+    driver: local
+  op-package-registry-storage:
     driver: local
