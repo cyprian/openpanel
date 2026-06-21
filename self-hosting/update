@@ -7,6 +7,31 @@ REPO_DIR="$(cd "$SELF_HOSTING_DIR/.." && pwd)"
 cd "$REPO_DIR"
 git pull
 
+generate_package_registry_token() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+    return
+  fi
+
+  LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 64
+}
+
+PACKAGE_REGISTRY_TOKEN=""
+if [ -f "$SELF_HOSTING_DIR/.env" ]; then
+  if ! grep -q '^PACKAGE_REGISTRY_TOKEN=' "$SELF_HOSTING_DIR/.env"; then
+    PACKAGE_REGISTRY_TOKEN="$(generate_package_registry_token)"
+    echo "Adding PACKAGE_REGISTRY_TOKEN to .env"
+    printf '\nPACKAGE_REGISTRY_TOKEN="%s"\n' "$PACKAGE_REGISTRY_TOKEN" >> "$SELF_HOSTING_DIR/.env"
+  else
+    PACKAGE_REGISTRY_TOKEN="$(
+      grep '^PACKAGE_REGISTRY_TOKEN=' "$SELF_HOSTING_DIR/.env" |
+        tail -n 1 |
+        cut -d '=' -f 2- |
+        sed -e 's/^"//' -e 's/"$//'
+    )"
+  fi
+fi
+
 if [ -f "$SELF_HOSTING_DIR/caddy/Caddyfile" ] &&
   { ! grep -q "handle /ml\\*" "$SELF_HOSTING_DIR/caddy/Caddyfile" ||
     ! grep -q "handle /packages\\*" "$SELF_HOSTING_DIR/caddy/Caddyfile"; }; then
@@ -90,5 +115,21 @@ echo "Updating services"
 docker compose up -d --remove-orphans --force-recreate op-api op-worker op-dashboard
 docker compose up -d --remove-orphans
 docker compose up -d --no-deps --force-recreate op-proxy
+
+if [ -n "$PACKAGE_REGISTRY_TOKEN" ]; then
+  cat <<EOF
+
+Package registry is available after the API and proxy finish restarting:
+  https://$(
+    grep '^DASHBOARD_URL=' "$SELF_HOSTING_DIR/.env" |
+      tail -n 1 |
+      cut -d '=' -f 2- |
+      sed -e 's/^"//' -e 's/"$//' -e 's#^https\?://##'
+  )/packages/simple
+
+Set this GitHub Actions secret in cyprian/openpanel-python-ml:
+  OPENPANEL_PACKAGE_REGISTRY_TOKEN=$PACKAGE_REGISTRY_TOKEN
+EOF
+fi
 
 echo "Done"
