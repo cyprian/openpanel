@@ -36,7 +36,7 @@ const navigationItems = [
   { href: '#instrument-training-code', label: 'Instrument code' },
   { href: '#track-metrics', label: 'Track metrics' },
   { href: '#visual-outputs', label: 'Visual outputs' },
-  { href: '#artifacts-and-metadata', label: 'Artifacts' },
+  { href: '#artifacts-and-metadata', label: 'Local artifacts' },
   { href: '#offline-and-sync', label: 'Offline sync' },
   { href: '#finish-runs', label: 'Finish runs' },
   { href: '#dashboard-areas', label: 'Dashboard areas' },
@@ -85,7 +85,7 @@ const languageAliases: Record<string, SyntaxLanguage> = {
 
 const content = `## Quick start
 
-Use ML projects for model families like **Iris Segmentation**, **Iris Detection**, **NAFNet**, or **LaMa**. A project can contain many training runs with scalar metrics, images, artifacts, configuration, metadata, notes, and tags.
+Use ML projects for model families like **Iris Segmentation**, **Iris Detection**, **NAFNet**, or **LaMa**. A project can contain many training runs with scalar metrics, images, local artifacts, configuration, metadata, notes, and tags.
 
 > ML projects reuse OpenPanel organizations, users, project settings, clients, and authentication while hiding analytics sections that are not useful for experiment tracking.
 
@@ -191,9 +191,9 @@ run = opml.init(
 | Install with PyPI fallback | \`python -m pip install --extra-index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Upgrade package | \`python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Install secure-storage extra | \`python -m pip install "openpanel-ml[secure-storage]"\` |
-| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.3"\` |
+| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.4"\` |
 
-Current published version: \`0.0.3\`.
+Current published version: \`0.0.4\`.
 
 ## Authentication
 
@@ -246,11 +246,13 @@ try:
             },
             step=step,
         )
-    run.finish("completed")
+    run.finish("finished")
 except Exception:
     run.finish("failed")
     raise
 \`\`\`
+
+The SDK creates a local run id immediately, then stores the server UUID returned by OpenPanel after the first sync. Metrics, images, and status updates automatically use the server UUID once it is available.
 
 ## Track metrics
 
@@ -309,9 +311,9 @@ run.log_images(
 )
 \`\`\`
 
-## Artifacts and metadata
+## Local artifacts and metadata
 
-Use artifacts for checkpoints, model files, exported reports, or evaluation outputs that should stay attached to a run.
+Use artifacts for checkpoints, model files, exported reports, or evaluation outputs that should stay with the local run directory. Artifact server upload is not enabled yet, so artifacts are copied locally and are not sent to OpenPanel.
 
 \`\`\`python
 run.upload_artifact(
@@ -332,7 +334,7 @@ run.notes("Baseline run with mobile-sized input and cosine scheduler.")
 
 ## Offline and sync
 
-Every metric, image, artifact, config update, tag update, note, and status change is written to \`./openpanel-ml/\` before network sync is attempted. Training does not block on OpenPanel availability.
+Every metric, image, local artifact, config update, tag update, note, and status change is written to \`./openpanel-ml/\` before network sync is attempted. Training does not block on OpenPanel availability.
 
 \`\`\`text
 openpanel-ml/
@@ -377,11 +379,13 @@ run = opml.init(project="eyepic-iris-detection-mobile", resume=True)
 
 ## Finish runs
 
-Always finish a run so dashboards can separate completed, running, and failed experiments cleanly.
+Always finish a run so dashboards can separate finished, running, and failed experiments cleanly.
 
 \`\`\`python
-run.finish("completed")
+run.finish("finished")
 \`\`\`
+
+\`completed\` is accepted as a compatibility alias, but new code should use \`finished\`.
 
 Use \`failed\` when a training job exits unsuccessfully:
 
@@ -396,7 +400,7 @@ run.finish("failed")
 | ML Projects | model or experiment groups |
 | Runs | all runs across the current OpenPanel project |
 | Run detail | final metrics, metric charts, config, metadata, notes, tags, and images |
-| Images and artifacts | predictions, masks, checkpoints, exported reports, and attached files |
+| Images | predictions, masks, and error maps attached to runs |
 | Compare | overlaid metric charts, hyperparameters, metadata, and final metrics |
 
 ## Storage
@@ -547,7 +551,7 @@ function Component() {
     <PageContainer className="max-w-7xl">
       <PageHeader
         className="mb-8"
-        description="Use the Python SDK to log training runs, metrics, images, artifacts, and model metadata."
+        description="Use the Python SDK to log training runs, metrics, images, local artifacts, and model metadata."
         actions={
           <Button
             icon={CopyIcon}
@@ -572,7 +576,7 @@ function Component() {
             </h2>
             <p className="mt-3 max-w-2xl text-muted-foreground leading-7">
               Keep training telemetry next to the rest of your OpenPanel
-              project: runs, charts, visual artifacts, comparisons, and the API
+              project: runs, charts, images, local artifacts, comparisons, and the API
               surface used by the SDK.
             </p>
           </div>

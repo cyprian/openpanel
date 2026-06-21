@@ -35,7 +35,8 @@ export const zCreateMlRun = z.object({
 export const zUpdateMlRun = z.object({
   name: z.string().min(1).optional(),
   status: z
-    .enum(['created', 'running', 'finished', 'failed', 'crashed'])
+    .enum(['created', 'running', 'finished', 'failed', 'crashed', 'completed'])
+    .transform((status) => (status === 'completed' ? 'finished' : status))
     .optional(),
   notes: z.string().nullish(),
   tags: z.array(z.string().min(1)).optional(),
@@ -131,9 +132,17 @@ export async function logMetrics(
   reply: FastifyReply
 ) {
   const project = getClientProject(request);
+  const run = await getMlRunById({
+    projectId: project.id,
+    id: request.params.runId,
+  });
+  if (!run) {
+    throw new HttpError('Run not found', { status: 404 });
+  }
+
   const result = await logMlMetrics({
     projectId: project.id,
-    runId: request.params.runId,
+    runId: run.id,
     metrics: request.body.metrics,
     step: request.body.step,
     epoch: request.body.epoch,

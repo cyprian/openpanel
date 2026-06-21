@@ -298,7 +298,7 @@ export async function logMlMetrics(input: {
   epoch?: number | null;
   createdAt?: Date;
 }) {
-  const run = await db.mlRun.findFirstOrThrow({
+  const run = await db.mlRun.findFirst({
     where: {
       id: input.runId,
       projectId: input.projectId,
@@ -312,6 +312,10 @@ export async function logMlMetrics(input: {
       startedAt: true,
     },
   });
+  if (!run) {
+    throw new Error('ML run not found');
+  }
+
   const summary = {
     ...((run.summary ?? {}) as MlRunSummary),
     ...input.metrics,
