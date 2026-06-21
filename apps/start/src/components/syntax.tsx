@@ -3,20 +3,29 @@ import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
 import bash from 'react-syntax-highlighter/dist/esm/languages/hljs/bash';
 import json from 'react-syntax-highlighter/dist/esm/languages/hljs/json';
 import markdown from 'react-syntax-highlighter/dist/esm/languages/hljs/markdown';
+import python from 'react-syntax-highlighter/dist/esm/languages/hljs/python';
 import ts from 'react-syntax-highlighter/dist/esm/languages/hljs/typescript';
 import docco from 'react-syntax-highlighter/dist/esm/styles/hljs/vs2015';
 import { clipboard } from '@/utils/clipboard';
 import { cn } from '@/utils/cn';
 
 SyntaxHighlighter.registerLanguage('typescript', ts);
+SyntaxHighlighter.registerLanguage('python', python);
 SyntaxHighlighter.registerLanguage('json', json);
 SyntaxHighlighter.registerLanguage('bash', bash);
 SyntaxHighlighter.registerLanguage('markdown', markdown);
 
+export type SyntaxLanguage =
+  | 'typescript'
+  | 'python'
+  | 'bash'
+  | 'json'
+  | 'markdown';
+
 interface SyntaxProps {
   code: string;
   className?: string;
-  language?: 'typescript' | 'bash' | 'json' | 'markdown';
+  language?: SyntaxLanguage;
   wrapLines?: boolean;
   copyable?: boolean;
 }
