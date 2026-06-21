@@ -75,10 +75,12 @@ export async function createRun(
   const mlProject = await resolveMlProject({
     projectId: project.id,
     name: request.body.project,
+    clientId: request.client?.id,
   });
   const run = await createMlRun({
     projectId: project.id,
     mlProjectId: mlProject.id,
+    clientId: request.client?.id,
     name: request.body.name,
     status: 'running',
     notes: request.body.notes,
@@ -204,7 +206,7 @@ export async function logEvaluation(
     throw new HttpError('Run not found', { status: 404 });
   }
 
-  const images = [];
+  const images: Awaited<ReturnType<typeof createMlImage>>[] = [];
   for (const [kind, image] of Object.entries(request.body.images)) {
     if (!image) {
       continue;

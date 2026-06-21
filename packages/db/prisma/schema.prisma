@@ -282,6 +282,8 @@ model MlProject {
   project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?      @db.Uuid
+  client         Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
   runs           MlRun[]
   images         MlImage[]
   evaluationRows MlEvaluationRow[]
@@ -291,6 +293,7 @@ model MlProject {
 
   @@unique([projectId, name])
   @@index([projectId, archivedAt])
+  @@index([clientId])
   @@map("ml_projects")
 }
 
@@ -312,6 +315,8 @@ model MlRun {
   project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String?      @db.Uuid
+  client         Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
   images         MlImage[]
   evaluationRows MlEvaluationRow[]
   startedAt      DateTime?
@@ -322,6 +327,7 @@ model MlRun {
 
   @@index([mlProjectId, createdAt])
   @@index([projectId, archivedAt])
+  @@index([clientId])
   @@map("ml_runs")
 }
 
@@ -445,6 +451,8 @@ model Client {
   project        Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   organizationId String
+  mlProjects     MlProject[]
+  mlRuns         MlRun[]
 
   ignoreCorsAndSecret Boolean @default(false)
 

@@ -1,5 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MlApiSourceCell } from '@/components/ml/api-source-cell';
+import { MlRunStatusSelect } from '@/components/ml/run-status-select';
+import { MlRunTags } from '@/components/ml/run-tags';
 import { MlStatusBadge } from '@/components/ml/status-badge';
 import {
   Table,
@@ -117,9 +120,11 @@ function MlProjectRunsIndex() {
           <TableHeader>
             <TableRow>
               <TableHead>Run</TableHead>
+              <TableHead>API source</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Tags</TableHead>
               <TableHead>Updated</TableHead>
+              <TableHead className="text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -141,17 +146,29 @@ function MlProjectRunsIndex() {
                   </Link>
                 </TableCell>
                 <TableCell>
+                  <MlApiSourceCell name={run.client?.name} />
+                </TableCell>
+                <TableCell>
                   <MlStatusBadge status={run.status} />
                 </TableCell>
-                <TableCell>{run.tags.join(', ') || '-'}</TableCell>
+                <TableCell className="max-w-[24rem]">
+                  <MlRunTags tags={run.tags} />
+                </TableCell>
                 <TableCell>
                   {formatDistanceToNow(run.updatedAt, { addSuffix: true })}
+                </TableCell>
+                <TableCell className="text-right">
+                  <MlRunStatusSelect
+                    projectId={projectId}
+                    runId={run.id}
+                    status={run.status}
+                  />
                 </TableCell>
               </TableRow>
             ))}
             {runs.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center">
+                <TableCell colSpan={6} className="py-10 text-center">
                   <div className="mx-auto max-w-sm">
                     <div className="font-medium">No runs yet</div>
                     <p className="mt-1 text-muted-foreground text-sm">

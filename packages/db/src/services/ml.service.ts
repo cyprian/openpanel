@@ -29,6 +29,12 @@ export async function listMlProjects(projectId: string) {
       archivedAt: null,
     },
     include: {
+      client: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       _count: {
         select: {
           runs: true,
@@ -58,6 +64,7 @@ export async function createMlProject(input: {
   projectId: string;
   name: string;
   description?: string | null;
+  clientId?: string | null;
 }) {
   const project = await db.project.findUniqueOrThrow({
     where: {
@@ -72,6 +79,7 @@ export async function createMlProject(input: {
     data: {
       projectId: input.projectId,
       organizationId: project.organizationId,
+      clientId: input.clientId,
       name: input.name,
       description: input.description,
     },
@@ -82,6 +90,7 @@ export async function resolveMlProject(input: {
   projectId: string;
   name: string;
   description?: string | null;
+  clientId?: string | null;
 }) {
   const project = await db.project.findUniqueOrThrow({
     where: {
@@ -102,10 +111,12 @@ export async function resolveMlProject(input: {
     update: {
       archivedAt: null,
       description: input.description ?? undefined,
+      clientId: input.clientId ?? undefined,
     },
     create: {
       projectId: input.projectId,
       organizationId: project.organizationId,
+      clientId: input.clientId,
       name: input.name,
       description: input.description,
     },
@@ -164,6 +175,12 @@ export async function listMlRuns(input: {
       archivedAt: null,
     },
     include: {
+      client: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       mlProject: true,
     },
     orderBy: {
@@ -183,6 +200,12 @@ export async function getMlRunById(input: {
       archivedAt: null,
     },
     include: {
+      client: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       mlProject: true,
     },
   });
@@ -191,6 +214,7 @@ export async function getMlRunById(input: {
 export async function createMlRun(input: {
   projectId: string;
   mlProjectId: string;
+  clientId?: string | null;
   name?: string;
   status?: string;
   notes?: string | null;
@@ -213,6 +237,7 @@ export async function createMlRun(input: {
     data: {
       projectId: input.projectId,
       organizationId: mlProject.organizationId,
+      clientId: input.clientId,
       mlProjectId: input.mlProjectId,
       name: input.name ?? `Run ${new Date().toISOString()}`,
       status: input.status ?? 'created',
@@ -224,6 +249,12 @@ export async function createMlRun(input: {
       summary: {},
     },
     include: {
+      client: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       mlProject: true,
     },
   });
@@ -266,6 +297,12 @@ export async function updateMlRun(input: {
       endedAt,
     },
     include: {
+      client: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       mlProject: true,
     },
   });

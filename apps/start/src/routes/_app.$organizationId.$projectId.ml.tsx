@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MlApiSourceCell } from '@/components/ml/api-source-cell';
 import {
   Table,
   TableBody,
@@ -104,6 +105,7 @@ function MlProjectsIndex() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
+              <TableHead>API source</TableHead>
               <TableHead>Runs</TableHead>
               <TableHead>Updated</TableHead>
             </TableRow>
@@ -121,6 +123,9 @@ function MlProjectsIndex() {
                     <ArrowRightIcon className="size-3.5" />
                   </Link>
                 </TableCell>
+                <TableCell>
+                  <MlApiSourceCell name={item.client?.name} />
+                </TableCell>
                 <TableCell>{item._count.runs}</TableCell>
                 <TableCell>
                   {formatDistanceToNow(item.updatedAt, { addSuffix: true })}
@@ -129,7 +134,7 @@ function MlProjectsIndex() {
             ))}
             {projects.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={3} className="py-10 text-center">
+                <TableCell colSpan={4} className="py-10 text-center">
                   <div className="mx-auto max-w-sm">
                     <div className="font-medium">No ML projects yet</div>
                     <p className="mt-1 text-muted-foreground text-sm">
