@@ -55,7 +55,6 @@ export default function SidebarProjectMenu({
         <div className="mb-2 font-medium text-muted-foreground text-sm">
           Experiments
         </div>
-        <SidebarLink href={'/'} icon={WallpaperIcon} label="Overview" />
         <SidebarLink href={'/ml'} icon={NetworkIcon} label="ML Projects" />
         <SidebarLink href={'/ml/runs'} icon={ChartLineIcon} label="Runs" />
         <SidebarLink
