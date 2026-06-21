@@ -101,9 +101,6 @@ function Component() {
   const metricKeys = getUniqueKeys(
     selectedRuns.map((run) => normalizeNumberRecord(run.summary))
   );
-  const configKeys = getUniqueKeys(
-    selectedRuns.map((run) => normalizeRecord(run.config))
-  );
   const selectedMetricValues = selectedRuns.map((run) =>
     normalizeNumberRecord(run.summary)
   );
@@ -120,7 +117,7 @@ function Component() {
             ? `Compare Runs for: ${compareProjectName}`
             : 'Compare Runs'
         }
-        description="Overlay training metrics and compare final values and hyperparameters."
+        description="Overlay training metrics and compare final values."
         className="mb-8"
       />
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -226,17 +223,6 @@ function Component() {
           }}
         />
       </section>
-      <div className="mt-4 grid gap-4">
-        <section className="rounded-md border bg-card p-4">
-          <div className="mb-4 font-medium">Hyperparameters</div>
-          <ComparisonTable
-            keys={configKeys}
-            runs={selectedRuns}
-            getValues={(run) => normalizeRecord(run.config)}
-            scrollClassName="max-h-[520px] overflow-auto"
-          />
-        </section>
-      </div>
     </PageContainer>
   );
 }
@@ -246,13 +232,11 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
   runs,
   getValues,
   getBadge,
-  scrollClassName = 'overflow-auto',
 }: {
   keys: string[];
   runs: TRun[];
   getValues: (run: TRun) => Record<string, unknown>;
   getBadge?: (key: string, run: TRun) => string | null;
-  scrollClassName?: string;
 }) {
   if (runs.length === 0) {
     return <div className="text-muted-foreground text-sm">Select runs.</div>;
@@ -262,7 +246,7 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
   }
 
   return (
-    <div className={scrollClassName}>
+    <div className="overflow-auto">
       <Table className="min-w-max table-fixed">
         <TableHeader>
           <TableRow>
