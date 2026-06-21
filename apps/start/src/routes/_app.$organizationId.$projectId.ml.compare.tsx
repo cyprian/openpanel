@@ -104,9 +104,6 @@ function Component() {
   const configKeys = getUniqueKeys(
     selectedRuns.map((run) => normalizeRecord(run.config))
   );
-  const metadataKeys = getUniqueKeys(
-    selectedRuns.map((run) => normalizeRecord(run.metadata))
-  );
   const selectedMetricValues = selectedRuns.map((run) =>
     normalizeNumberRecord(run.summary)
   );
@@ -123,7 +120,7 @@ function Component() {
             ? `Compare Runs for: ${compareProjectName}`
             : 'Compare Runs'
         }
-        description="Overlay training metrics and compare final values, hyperparameters, and metadata."
+        description="Overlay training metrics and compare final values and hyperparameters."
         className="mb-8"
       />
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -236,14 +233,7 @@ function Component() {
             keys={configKeys}
             runs={selectedRuns}
             getValues={(run) => normalizeRecord(run.config)}
-          />
-        </section>
-        <section className="rounded-md border bg-card p-4">
-          <div className="mb-4 font-medium">Metadata</div>
-          <ComparisonTable
-            keys={metadataKeys}
-            runs={selectedRuns}
-            getValues={(run) => normalizeRecord(run.metadata)}
+            scrollClassName="max-h-[520px] overflow-auto"
           />
         </section>
       </div>
@@ -256,11 +246,13 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
   runs,
   getValues,
   getBadge,
+  scrollClassName = 'overflow-auto',
 }: {
   keys: string[];
   runs: TRun[];
   getValues: (run: TRun) => Record<string, unknown>;
   getBadge?: (key: string, run: TRun) => string | null;
+  scrollClassName?: string;
 }) {
   if (runs.length === 0) {
     return <div className="text-muted-foreground text-sm">Select runs.</div>;
@@ -270,7 +262,7 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
   }
 
   return (
-    <div className="overflow-auto">
+    <div className={scrollClassName}>
       <Table className="min-w-max table-fixed">
         <TableHeader>
           <TableRow>
