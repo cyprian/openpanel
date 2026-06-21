@@ -24,6 +24,7 @@ import { registerGscOverviewTools } from './gsc/overview';
 import { registerGscPageTools } from './gsc/pages';
 import { registerGscQueryTools } from './gsc/queries';
 import { registerDashboardLinkTools } from './dashboard-links';
+import { registerMlTools } from './ml';
 import { registerProjectTools } from './projects';
 
 export function registerAllTools(
@@ -34,6 +35,7 @@ export function registerAllTools(
   registerProjectTools(server, context);
   registerDashboardLinkTools(server, context);
   registerReportTools(server, context);
+  registerMlTools(server, context);
 
   // Analytics — discovery (call these first to understand the data)
   registerEventNameTools(server, context);

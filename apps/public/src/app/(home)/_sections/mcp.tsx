@@ -116,7 +116,7 @@ export function Mcp() {
               className="row items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground"
               href="/docs/mcp#available-tools"
             >
-              View all 38 tools <ArrowRightIcon className="size-3.5" />
+              View all 47 tools <ArrowRightIcon className="size-3.5" />
             </Link>
           </div>
         </div>

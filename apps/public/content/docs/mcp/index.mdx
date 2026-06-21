@@ -110,6 +110,20 @@ claude mcp add --transport http openpanel "https://api.openpanel.dev/mcp?token=Y
 | `list_reports` | List all reports in a dashboard with their chart types and tracked events. |
 | `get_report_data` | Execute a saved report and return its data (time-series, funnel, metric, etc.). |
 
+### ML projects
+
+| Tool | Description |
+|------|-------------|
+| `list_ml_projects` | List ML experiment projects, including run counts and dashboard links. |
+| `get_ml_project` | Get one ML experiment project by ID. |
+| `list_ml_runs` | List ML tracking runs, optionally filtered by ML project, status, or tag. |
+| `get_ml_run` | Get one ML run with status, tags, config, metadata, and summary metrics. |
+| `list_ml_metric_names` | List scalar metric names logged for ML runs. |
+| `get_ml_latest_metrics` | Get current scalar metrics for one run, with optional recent metric points. |
+| `get_ml_metric_series` | Fetch scalar metric time series for one metric across one or more runs. |
+| `list_ml_images` | List image artifact metadata for a run without embedding image bytes. |
+| `list_ml_evaluation_rows` | List visual evaluation rows for a run without embedding image bytes. |
+
 ### Discovery
 
 | Tool | Description |
