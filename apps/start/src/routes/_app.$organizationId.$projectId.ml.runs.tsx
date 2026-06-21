@@ -1,3 +1,14 @@
+import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
+import { MlStatusBadge } from '@/components/ml/status-badge';
+import { PageContainer } from '@/components/page-container';
+import { PageHeader } from '@/components/page-header';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -6,15 +17,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MlStatusBadge } from '@/components/ml/status-badge';
-import { PageContainer } from '@/components/page-container';
-import { PageHeader } from '@/components/page-header';
-import { useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
-import { useQuery } from '@tanstack/react-query';
+import type { IMlRunStatus } from '@openpanel/validation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import { ArrowRightIcon } from 'lucide-react';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/_app/$organizationId/$projectId/ml/runs')({
   component: Component,
@@ -23,10 +32,29 @@ export const Route = createFileRoute('/_app/$organizationId/$projectId/ml/runs')
   }),
 });
 
+const ML_RUN_STATUSES = [
+  'created',
+  'running',
+  'finished',
+  'failed',
+  'crashed',
+] as const satisfies readonly IMlRunStatus[];
+
 function Component() {
   const { organizationId, projectId } = Route.useParams();
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const runs = useQuery(trpc.ml.runs.queryOptions({ projectId }));
+  const updateRunStatus = useMutation(
+    trpc.ml.updateRun.mutationOptions({
+      onError: handleErrorToastOptions({}),
+      onSuccess: () => {
+        queryClient.invalidateQueries(trpc.ml.runs.pathFilter());
+        queryClient.invalidateQueries(trpc.ml.run.pathFilter());
+        toast.success('Run status updated');
+      },
+    })
+  );
 
   return (
     <PageContainer>
@@ -43,6 +71,7 @@ function Component() {
               <TableHead>ML Project</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Updated</TableHead>
+              <TableHead className="text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -70,11 +99,38 @@ function Component() {
                 <TableCell>
                   {formatDistanceToNow(run.updatedAt, { addSuffix: true })}
                 </TableCell>
+                <TableCell className="text-right">
+                  <Select
+                    value={run.status}
+                    disabled={updateRunStatus.isPending}
+                    onValueChange={(status) => {
+                      if (status === run.status) {
+                        return;
+                      }
+                      updateRunStatus.mutate({
+                        id: run.id,
+                        projectId,
+                        status: status as IMlRunStatus,
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="ml-auto w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {ML_RUN_STATUSES.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          <span className="capitalize">{status}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
               </TableRow>
             ))}
             {runs.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center">
+                <TableCell colSpan={5} className="py-10 text-center">
                   <div className="mx-auto max-w-sm">
                     <div className="font-medium">No runs yet</div>
                     <p className="mt-1 text-muted-foreground text-sm">

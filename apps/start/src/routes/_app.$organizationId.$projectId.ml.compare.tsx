@@ -14,6 +14,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  TooltipContent,
+  TooltipTrigger,
+  Tooltip as UiTooltip,
+} from '@/components/ui/tooltip';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
@@ -266,25 +271,30 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
 
   return (
     <div className="overflow-auto">
-      <Table>
+      <Table className="min-w-max table-fixed">
         <TableHeader>
           <TableRow>
-            <TableHead>Experiment</TableHead>
+            <TableHead className="w-80">Experiment</TableHead>
             {keys.map((key) => (
-              <TableHead key={key}>{key}</TableHead>
+              <TableHead className="w-64" key={key}>
+                {key}
+              </TableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
           {runs.map((run) => (
             <TableRow key={run.id}>
-              <TableCell className="font-medium">{run.name}</TableCell>
+              <TableCell className="max-w-80 font-medium">
+                <span className="block truncate">{run.name}</span>
+              </TableCell>
               {keys.map((key) => {
                 const badge = getBadge?.(key, run);
+                const value = getValues(run)[key];
                 return (
-                  <TableCell key={key}>
-                    <span className="row gap-2">
-                      <span>{formatValue(getValues(run)[key])}</span>
+                  <TableCell className="max-w-64" key={key}>
+                    <span className="row min-w-0 gap-2">
+                      <TruncatedValue value={value} />
                       {badge && <Badge variant="success">{badge}</Badge>}
                     </span>
                   </TableCell>
@@ -295,6 +305,38 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+function TruncatedValue({ value }: { value: unknown }) {
+  const formattedValue = formatValue(value);
+  const tooltipValue = formatTooltipValue(value);
+  const shouldShowTooltip =
+    formattedValue !== '-' &&
+    (formattedValue.length > 24 || tooltipValue.includes('\n'));
+
+  const content = (
+    <span
+      className="block min-w-0 max-w-full truncate font-mono text-xs"
+      tabIndex={shouldShowTooltip ? 0 : undefined}
+    >
+      {formattedValue}
+    </span>
+  );
+
+  if (!shouldShowTooltip) {
+    return content;
+  }
+
+  return (
+    <UiTooltip>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent className="max-w-[min(720px,calc(100vw-32px))]">
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">
+          {tooltipValue}
+        </pre>
+      </TooltipContent>
+    </UiTooltip>
   );
 }
 
@@ -504,6 +546,16 @@ function formatValue(value: unknown) {
     return '-';
   }
   return JSON.stringify(value);
+}
+
+function formatTooltipValue(value: unknown) {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean' || value == null) {
+    return formatValue(value);
+  }
+  return JSON.stringify(value, null, 2);
 }
 
 function formatNumber(value: number) {
