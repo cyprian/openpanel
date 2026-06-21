@@ -38,7 +38,6 @@ const navigationItems = [
   { href: '#visual-outputs', label: 'Visual outputs' },
   { href: '#artifacts-and-metadata', label: 'Artifacts' },
   { href: '#offline-and-sync', label: 'Offline sync' },
-  { href: '#copy-for-llms', label: 'LLM context' },
   { href: '#finish-runs', label: 'Finish runs' },
   { href: '#dashboard-areas', label: 'Dashboard areas' },
   { href: '#storage', label: 'Storage' },
@@ -90,11 +89,13 @@ Use ML projects for model families like **Iris Segmentation**, **Iris Detection*
 
 > ML projects reuse OpenPanel organizations, users, project settings, clients, and authentication while hiding analytics sections that are not useful for experiment tracking.
 
-### 1. Create an ML project
+### Step 1: Create an ML project
 
-Create a project and choose **ML** as the project type. Use a separate ML project for each model family, dataset, or training objective that you want to compare over time.
+Create a project from the OpenPanel dashboard and choose **ML** as the project type.
 
-### 2. Install the Python package
+Use one ML project for each model family, dataset, or training objective you want to compare over time.
+
+### Step 2: Install the Python package
 
 OpenPanel ML is distributed as the \`openpanel-ml\` Python package. This OpenPanel instance hosts the package registry, so you can install it without PyPI:
 
@@ -114,7 +115,7 @@ Upgrade an existing environment with:
 python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml
 \`\`\`
 
-### 3. Authenticate
+### Step 3: Authenticate
 
 Create a write client from project settings, then either log in once on the machine:
 
@@ -137,7 +138,7 @@ The SDK can use OS secure storage through \`keyring\` when installed. It falls b
 python -m pip install "openpanel-ml[secure-storage]"
 \`\`\`
 
-### 4. Start a run in training code
+### Step 4: Start a run in training code
 
 Training scripts import \`openpanel_ml\`:
 
@@ -374,10 +375,6 @@ Resume the latest unfinished local run for a project:
 run = opml.init(project="eyepic-iris-detection-mobile", resume=True)
 \`\`\`
 
-## Copy for LLMs
-
-Use the **Copy** button at the top of this page to copy these docs as plain text. Paste that text into an LLM when you want it to add or update OpenPanel ML tracking in a training script. The copied context includes install commands, authentication, code snippets, logging options, local-first behavior, and release information.
-
 ## Finish runs
 
 Always finish a run so dashboards can separate completed, running, and failed experiments cleanly.
@@ -431,10 +428,7 @@ https://analytics.eyepic.io/packages/simple
 
 const copyContent = `OpenPanel ML Tracking Docs
 
-${content}
-
-LLM instruction:
-Use this context when adding or updating OpenPanel ML tracking in Python training code. Prefer the published package, import openpanel_ml as opml, keep tracking local-first, finish runs with completed or failed status, and use silent=False/log_data=True only when visible logs are useful.`;
+${content}`;
 
 function nodeToText(node: ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') {
