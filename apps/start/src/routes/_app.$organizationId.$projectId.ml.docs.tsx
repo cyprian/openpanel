@@ -3,6 +3,7 @@ import {
   ActivityIcon,
   BarChart3Icon,
   BrainCircuitIcon,
+  CopyIcon,
   DatabaseIcon,
   ImagesIcon,
   Rows3Icon,
@@ -14,6 +15,8 @@ import { Markdown } from '@/components/markdown';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import Syntax, { type SyntaxLanguage } from '@/components/syntax';
+import { Button } from '@/components/ui/button';
+import { clipboard } from '@/utils/clipboard';
 import { cn } from '@/utils/cn';
 import { createProjectTitle } from '@/utils/title';
 
@@ -28,8 +31,14 @@ export const Route = createFileRoute(
 
 const navigationItems = [
   { href: '#quick-start', label: 'Quick start' },
+  { href: '#package-install', label: 'Package install' },
+  { href: '#authentication', label: 'Authentication' },
+  { href: '#instrument-training-code', label: 'Instrument code' },
   { href: '#track-metrics', label: 'Track metrics' },
   { href: '#visual-outputs', label: 'Visual outputs' },
+  { href: '#artifacts-and-metadata', label: 'Artifacts' },
+  { href: '#offline-and-sync', label: 'Offline sync' },
+  { href: '#copy-for-llms', label: 'LLM context' },
   { href: '#finish-runs', label: 'Finish runs' },
   { href: '#dashboard-areas', label: 'Dashboard areas' },
   { href: '#storage', label: 'Storage' },
@@ -71,12 +80,13 @@ const languageAliases: Record<string, SyntaxLanguage> = {
   py: 'python',
   sh: 'bash',
   shell: 'bash',
+  text: 'markdown',
   ts: 'typescript',
 };
 
 const content = `## Quick start
 
-Use ML projects for model families like **NAFNet**, **LaMa**, **Cosmos**, or **Iris Segmentation**. A project can contain many training runs with scalar metrics, images, visual evaluation tables, configuration, metadata, notes, and tags.
+Use ML projects for model families like **Iris Segmentation**, **Iris Detection**, **NAFNet**, or **LaMa**. A project can contain many training runs with scalar metrics, images, artifacts, configuration, metadata, notes, and tags.
 
 > ML projects reuse OpenPanel organizations, users, project settings, clients, and authentication while hiding analytics sections that are not useful for experiment tracking.
 
@@ -84,44 +94,161 @@ Use ML projects for model families like **NAFNet**, **LaMa**, **Cosmos**, or **I
 
 Create a project and choose **ML** as the project type. Use a separate ML project for each model family, dataset, or training objective that you want to compare over time.
 
-### 2. Configure client credentials
+### 2. Install the Python package
 
-Create a write client from project settings and expose it to your training job.
+OpenPanel ML is distributed as the \`openpanel-ml\` Python package. This OpenPanel instance hosts the package registry, so you can install it without PyPI:
 
 \`\`\`bash
-export OPENPANEL_API_URL="https://analytics.eyepic.io"
+python -m pip install --index-url https://analytics.eyepic.io/packages/simple openpanel-ml
+\`\`\`
+
+If you still want PyPI available for optional dependencies, use OpenPanel as an extra package index:
+
+\`\`\`bash
+python -m pip install --extra-index-url https://analytics.eyepic.io/packages/simple openpanel-ml
+\`\`\`
+
+Upgrade an existing environment with:
+
+\`\`\`bash
+python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml
+\`\`\`
+
+### 3. Authenticate
+
+Create a write client from project settings, then either log in once on the machine:
+
+\`\`\`bash
+openpanel-ml login
+openpanel-ml status
+\`\`\`
+
+Or expose credentials to a training job:
+
+\`\`\`bash
 export OPENPANEL_CLIENT_ID="your-client-id"
 export OPENPANEL_CLIENT_SECRET="your-client-secret"
+export OPENPANEL_SERVER_URL="https://analytics.eyepic.io"
 \`\`\`
 
-### 3. Install the Python SDK
+The SDK can use OS secure storage through \`keyring\` when installed. It falls back to a local config file when secure storage is unavailable.
 
 \`\`\`bash
-pip install ./packages/sdks/python
+python -m pip install "openpanel-ml[secure-storage]"
 \`\`\`
 
-The SDK package is named \`openpanel-ml\`, and training scripts import \`openpanel.ml\`.
+### 4. Start a run in training code
 
-### 4. Start a run
+Training scripts import \`openpanel_ml\`:
 
 \`\`\`python
-import openpanel.ml as openpanel
+import openpanel_ml as opml
 
-run = openpanel.init(
-    project="NAFNet",
-    name="nafnet-baseline-001",
+run = opml.init(
+    project="eyepic-iris-detection-mobile",
+    experiment="iris-unet-baseline-001",
     tags=["baseline", "64x64"],
     config={
-        "model": "NAFNet",
+        "model": "UNet",
         "learning_rate": 1e-4,
         "batch_size": 16,
         "optimizer": "adamw",
     },
     metadata={
-        "dataset": "synthetic-rain",
+        "dataset": "eyepic-iris-v1",
         "trainer": "pytorch",
     },
 )
+\`\`\`
+
+The SDK is silent by default. Enable lifecycle logs when you want start and finish messages with the run URL and local data path:
+
+\`\`\`python
+run = opml.init(
+    project="eyepic-iris-detection-mobile",
+    experiment="iris-unet-baseline-001",
+    silent=False,
+)
+\`\`\`
+
+Enable data sync logs when debugging what was sent:
+
+\`\`\`python
+run = opml.init(
+    project="eyepic-iris-detection-mobile",
+    experiment="iris-unet-baseline-001",
+    silent=False,
+    log_data=True,
+)
+\`\`\`
+
+## Package install
+
+| Task | Command |
+| --- | --- |
+| Install from OpenPanel only | \`python -m pip install --index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
+| Install with PyPI fallback | \`python -m pip install --extra-index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
+| Upgrade package | \`python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
+| Install secure-storage extra | \`python -m pip install "openpanel-ml[secure-storage]"\` |
+| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.3"\` |
+
+Current published version: \`0.0.3\`.
+
+## Authentication
+
+\`\`\`bash
+openpanel-ml login
+openpanel-ml status
+openpanel-ml logout
+\`\`\`
+
+\`openpanel-ml login\` prompts for a client ID and client secret. You can also pass them explicitly:
+
+\`\`\`bash
+openpanel-ml login --client-id your-client-id --client-secret your-client-secret
+\`\`\`
+
+For CI, notebooks, or remote training jobs, environment variables are usually easier:
+
+\`\`\`bash
+export OPENPANEL_CLIENT_ID="your-client-id"
+export OPENPANEL_CLIENT_SECRET="your-client-secret"
+export OPENPANEL_SERVER_URL="https://analytics.eyepic.io"
+\`\`\`
+
+## Instrument training code
+
+Use this minimal pattern when adding OpenPanel ML to a training script:
+
+\`\`\`python
+import openpanel_ml as opml
+
+run = opml.init(
+    project="eyepic-iris-detection-mobile",
+    experiment="experiment-name",
+    config={
+        "model": "your-model",
+        "learning_rate": 1e-4,
+        "batch_size": 16,
+    },
+    tags=["baseline"],
+)
+
+try:
+    for step in range(total_steps):
+        metrics = train_step()
+        run.log(
+            {
+                "loss": metrics["loss"],
+                "iou": metrics["iou"],
+                "dice": metrics["dice"],
+            },
+            step=step,
+        )
+    run.finish("completed")
+except Exception:
+    run.finish("failed")
+    raise
 \`\`\`
 
 ## Track metrics
@@ -131,13 +258,13 @@ Use \`run.log()\` for any scalar series you want to plot or compare. The same ca
 \`\`\`python
 for step in range(1000):
     loss = train_step()
-    psnr, ssim = evaluate_batch()
+    iou, dice = evaluate_batch()
 
     run.log(
         {
             "loss": loss,
-            "psnr": psnr,
-            "ssim": ssim,
+            "iou": iou,
+            "dice": dice,
         },
         step=step,
         epoch=step // 100,
@@ -148,62 +275,115 @@ Metrics appear as run charts with axes, hover tooltips, and final metric summari
 
 ## Visual outputs
 
-Log image artifacts directly from your training or evaluation loop. Images can be local paths, bytes, or other values accepted by the SDK.
+Log image outputs directly from your training or evaluation loop. Images can be local file paths or bytes.
 
 \`\`\`python
-run.log_image(
-    "outputs/prediction-0001.png",
-    kind="prediction",
-    step=120,
-    epoch=1,
-    caption="Validation prediction",
-)
+run.log_image("prediction", "outputs/prediction-0001.png", step=120, epoch=1)
 \`\`\`
 
 Use \`every\` to reduce upload volume:
 
 \`\`\`python
 run.log_image(
+    "prediction",
     prediction_png_bytes,
-    kind="prediction",
+    filename="prediction-0120.png",
     content_type="image/png",
+    step=120,
     every=50,
 )
 \`\`\`
 
-### Visual evaluation rows
-
-Visual evaluation rows are useful for comparing input images, ground truth, predictions, error maps, and per-sample metrics in one table.
+Log multiple images for the same step with \`run.log_images()\`:
 
 \`\`\`python
-run.log_evaluation(
-    sample_id="val-00042",
-    input="samples/input-00042.png",
-    ground_truth="samples/gt-00042.png",
-    prediction="outputs/pred-00042.png",
-    error_map="outputs/error-00042.png",
-    metrics={
-        "psnr": 34.5,
-        "ssim": 0.94,
-        "lpips": 0.08,
+run.log_images(
+    {
+        "input": "samples/input-00042.png",
+        "prediction": "outputs/pred-00042.png",
+        "mask": "outputs/mask-00042.png",
     },
     step=250,
     epoch=2,
-    metadata={
-        "split": "validation",
-        "scene": "indoor",
-    },
 )
 \`\`\`
 
-The run page shows these rows with image thumbnails, metric columns, search, sorting, and pagination.
+## Artifacts and metadata
+
+Use artifacts for checkpoints, model files, exported reports, or evaluation outputs that should stay attached to a run.
+
+\`\`\`python
+run.upload_artifact(
+    "best-model",
+    "checkpoints/best.pt",
+    artifact_type="checkpoint",
+    metadata={"metric": "dice", "score": 0.97},
+)
+\`\`\`
+
+Update config, tags, and notes as the job discovers more context:
+
+\`\`\`python
+run.config.update({"scheduler": "cosine", "augmentation": "heavy"})
+run.tags(["baseline", "mobile", "iris"])
+run.notes("Baseline run with mobile-sized input and cosine scheduler.")
+\`\`\`
+
+## Offline and sync
+
+Every metric, image, artifact, config update, tag update, note, and status change is written to \`./openpanel-ml/\` before network sync is attempted. Training does not block on OpenPanel availability.
+
+\`\`\`text
+openpanel-ml/
+├── runs/
+│   └── run_.../
+│       ├── metadata.json
+│       ├── metrics.jsonl
+│       ├── system.json
+│       ├── config.json
+│       ├── artifacts/
+│       ├── images/
+│       └── checkpoints/
+├── queue/
+│   ├── pending/
+│   ├── failed/
+│   └── completed/
+├── cache/
+├── logs/
+└── settings.json
+\`\`\`
+
+Use offline mode when a job cannot reach OpenPanel:
+
+\`\`\`python
+run = opml.init(project="eyepic-iris-detection-mobile", offline=True)
+run.log({"loss": 0.42})
+run.finish()
+\`\`\`
+
+Sync queued local events later:
+
+\`\`\`bash
+openpanel-ml sync
+openpanel-ml sync --root ./openpanel-ml
+\`\`\`
+
+Resume the latest unfinished local run for a project:
+
+\`\`\`python
+run = opml.init(project="eyepic-iris-detection-mobile", resume=True)
+\`\`\`
+
+## Copy for LLMs
+
+Use the **Copy** button at the top of this page to copy these docs as plain text. Paste that text into an LLM when you want it to add or update OpenPanel ML tracking in a training script. The copied context includes install commands, authentication, code snippets, logging options, local-first behavior, and release information.
 
 ## Finish runs
 
 Always finish a run so dashboards can separate completed, running, and failed experiments cleanly.
 
 \`\`\`python
-run.finish("finished")
+run.finish("completed")
 \`\`\`
 
 Use \`failed\` when a training job exits unsuccessfully:
@@ -219,18 +399,24 @@ run.finish("failed")
 | ML Projects | model or experiment groups |
 | Runs | all runs across the current OpenPanel project |
 | Run detail | final metrics, metric charts, config, metadata, notes, tags, and images |
-| Evaluation table | input, ground truth, prediction, error map, PSNR, SSIM, LPIPS, epoch, and step |
+| Images and artifacts | predictions, masks, checkpoints, exported reports, and attached files |
 | Compare | overlaid metric charts, hyperparameters, metadata, and final metrics |
 
 ## Storage
 
-Self-hosted OpenPanel stores uploaded ML images on the server by default. Configure the storage directory with:
+Self-hosted OpenPanel stores uploaded ML images on the server by default. Configure the ML storage directory with:
 
 \`\`\`bash
 ML_STORAGE_DIR=/var/lib/openpanel/ml
 \`\`\`
 
 This keeps visual outputs on your infrastructure. The storage layer is intentionally isolated so S3 or Google Cloud Storage can be added later.
+
+The OpenPanel package registry is also hosted by this OpenPanel instance:
+
+\`\`\`bash
+https://analytics.eyepic.io/packages/simple
+\`\`\`
 
 ## HTTP API
 
@@ -242,6 +428,13 @@ This keeps visual outputs on your infrastructure. The storage layer is intention
 | \`POST\` | \`/ml/runs/:runId/images\` | upload a run image |
 | \`POST\` | \`/ml/runs/:runId/evaluations\` | log a visual evaluation table row |
 `;
+
+const copyContent = `OpenPanel ML Tracking Docs
+
+${content}
+
+LLM instruction:
+Use this context when adding or updating OpenPanel ML tracking in Python training code. Prefer the published package, import openpanel_ml as opml, keep tracking local-first, finish runs with completed or failed status, and use silent=False/log_data=True only when visible logs are useful.`;
 
 function nodeToText(node: ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') {
@@ -360,7 +553,16 @@ function Component() {
     <PageContainer className="max-w-7xl">
       <PageHeader
         className="mb-8"
-        description="Use the Python SDK to log training runs, metrics, images, and visual evaluation tables."
+        description="Use the Python SDK to log training runs, metrics, images, artifacts, and model metadata."
+        actions={
+          <Button
+            icon={CopyIcon}
+            onClick={() => clipboard(copyContent, 'ML tracking docs copied')}
+            variant="outline"
+          >
+            Copy
+          </Button>
+        }
         title="ML Tracking Docs"
       />
 
