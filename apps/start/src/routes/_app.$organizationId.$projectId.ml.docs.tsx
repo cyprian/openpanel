@@ -191,9 +191,9 @@ run = opml.init(
 | Install with PyPI fallback | \`python -m pip install --extra-index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Upgrade package | \`python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Install secure-storage extra | \`python -m pip install "openpanel-ml[secure-storage]"\` |
-| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.5"\` |
+| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.6"\` |
 
-Current published version: \`0.0.5\`.
+Current published version: \`0.0.6\`.
 
 ## Authentication
 
@@ -324,36 +324,38 @@ run.log_images(
 
 Evaluation rows are also flexible. Send one image, two images, or ten named images for a sample; the table columns are derived from the image names in the order they are logged.
 
-\`\`\`json
-{
-  "sampleId": "sample-00042",
-  "step": 250,
-  "epoch": 2,
-  "metrics": {
-    "dice": 0.94,
-    "iou": 0.89
-  },
-  "images": [
-    {
-      "name": "ground_truth",
-      "filename": "gt-00042.png",
-      "contentType": "image/png",
-      "image": "base64-or-data-url"
+\`\`\`python
+run.log_evaluation(
+    sample_id="sample-00042",
+    step=250,
+    epoch=2,
+    metrics={"dice": 0.94, "iou": 0.89},
+    metadata={"stage": "val", "fold": 1},
+    images={
+        "ground_truth": "samples/gt-00042.png",
+        "prediction": "outputs/result-00042.png",
+        "pixel_diff_heatmap": "outputs/heatmap-00042.png",
     },
-    {
-      "name": "prediction",
-      "filename": "result-00042.png",
-      "contentType": "image/png",
-      "image": "base64-or-data-url"
-    },
-    {
-      "name": "pixel_diff_heatmap",
-      "filename": "heatmap-00042.png",
-      "contentType": "image/png",
-      "image": "base64-or-data-url"
-    }
-  ]
-}
+)
+\`\`\`
+
+Use the richer list form when individual images need captions, content types, filenames, or per-image metadata:
+
+\`\`\`python
+run.log_evaluation(
+    sample_id="sample-00042",
+    step=250,
+    images=[
+        {
+            "name": "pixel_diff_heatmap",
+            "image": heatmap_png_bytes,
+            "filename": "heatmap-00042.png",
+            "content_type": "image/png",
+            "caption": "Absolute prediction error",
+            "metadata": {"threshold": 0.4},
+        }
+    ],
+)
 \`\`\`
 
 ## Local artifacts and metadata
