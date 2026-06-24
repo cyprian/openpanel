@@ -1,4 +1,5 @@
 import { MlStatusBadge } from '@/components/ml/status-badge';
+import { MlRunActions } from '@/components/ml/run-actions';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +28,7 @@ import {
 import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
 import { useTRPC } from '@/integrations/trpc/react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import {
   ArrowLeftIcon,
@@ -62,6 +63,7 @@ export function MlRunDetail({
   fallbackMlProjectId?: string;
 }) {
   const trpc = useTRPC();
+  const navigate = useNavigate();
   const run = useQuery(trpc.ml.run.queryOptions({ projectId, id: runId }));
   const metricNames = useQuery(
     trpc.ml.metricNames.queryOptions({ projectId, runId })
@@ -146,6 +148,26 @@ export function MlRunDetail({
                 icon={DatabaseIcon}
                 title="Metadata"
                 value={metadata}
+              />
+              <MlRunActions
+                projectId={projectId}
+                runId={run.data.id}
+                runName={run.data.name}
+                showLabel
+                status={run.data.status}
+                onDeleted={() => {
+                  if (mlProjectId) {
+                    navigate({
+                      to: '/$organizationId/$projectId/ml/projects/$mlProjectId',
+                      params: { organizationId, projectId, mlProjectId },
+                    });
+                    return;
+                  }
+                  navigate({
+                    to: '/$organizationId/$projectId/ml/runs',
+                    params: { organizationId, projectId },
+                  });
+                }}
               />
             </>
           ) : null

@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { MlApiSourceCell } from '@/components/ml/api-source-cell';
-import { MlRunStatusSelect } from '@/components/ml/run-status-select';
+import { MlRunActions } from '@/components/ml/run-actions';
 import { MlRunTags } from '@/components/ml/run-tags';
 import { MlStatusBadge } from '@/components/ml/status-badge';
 import {
@@ -124,7 +124,7 @@ function MlProjectRunsIndex() {
               <TableHead>Status</TableHead>
               <TableHead>Tags</TableHead>
               <TableHead>Updated</TableHead>
-              <TableHead className="text-right">Action</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -158,9 +158,10 @@ function MlProjectRunsIndex() {
                   {formatDistanceToNow(run.updatedAt, { addSuffix: true })}
                 </TableCell>
                 <TableCell className="text-right">
-                  <MlRunStatusSelect
+                  <MlRunActions
                     projectId={projectId}
                     runId={run.id}
+                    runName={run.name}
                     status={run.status}
                   />
                 </TableCell>

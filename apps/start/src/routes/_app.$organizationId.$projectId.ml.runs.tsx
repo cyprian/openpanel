@@ -1,6 +1,6 @@
 import { useTRPC } from '@/integrations/trpc/react';
 import { MlApiSourceCell } from '@/components/ml/api-source-cell';
-import { MlRunStatusSelect } from '@/components/ml/run-status-select';
+import { MlRunActions } from '@/components/ml/run-actions';
 import { MlStatusBadge } from '@/components/ml/status-badge';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
@@ -46,7 +46,7 @@ function Component() {
               <TableHead>ML Project</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Updated</TableHead>
-              <TableHead className="text-right">Action</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -78,9 +78,10 @@ function Component() {
                   {formatDistanceToNow(run.updatedAt, { addSuffix: true })}
                 </TableCell>
                 <TableCell className="text-right">
-                  <MlRunStatusSelect
+                  <MlRunActions
                     projectId={projectId}
                     runId={run.id}
+                    runName={run.name}
                     status={run.status}
                   />
                 </TableCell>
