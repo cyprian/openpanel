@@ -84,10 +84,6 @@ export function MlRunDetail({
       })
     ),
   });
-  const images = useQuery({
-    ...trpc.ml.images.queryOptions({ projectId, runId, limit: 100 }),
-    enabled: !!run.data,
-  });
   const evaluationSummary = useQuery({
     ...trpc.ml.evaluationRows.queryOptions({
       projectId,
@@ -113,7 +109,6 @@ export function MlRunDetail({
   const config = normalizeRecord(run.data?.config);
   const metadata = normalizeRecord(run.data?.metadata);
   const mlProjectId = run.data?.mlProjectId ?? fallbackMlProjectId;
-  const hasImages = (images.data?.length ?? 0) > 0;
   const hasEvaluationRows = (evaluationSummary.data?.total ?? 0) > 0;
 
   return (
@@ -226,7 +221,6 @@ export function MlRunDetail({
         queries={metricSeriesQueries}
         summary={summary}
       />
-      {hasImages && <ImageGallery images={images.data ?? []} />}
       {hasEvaluationRows && (
         <EvaluationTable
           data={evaluationRows.data}
@@ -264,7 +258,6 @@ type MlRunImage = {
   width: number | null;
   height: number | null;
   dataUrl: string;
-  createdAt: Date | string;
 };
 
 type MlEvaluationRow = {
@@ -292,13 +285,6 @@ type MlMetricSeriesPoint = {
   step: number;
   value: number;
   created_at: string;
-};
-
-type ImageGroup = {
-  key: string;
-  step: number | null;
-  epoch: number | null;
-  images: MlRunImage[];
 };
 
 type MetricSeriesQueryResult = {
@@ -609,122 +595,6 @@ function EvaluationImageThumb({ images }: { images: MlRunImage[] }) {
   );
 }
 
-function ImageGallery({
-  images,
-}: {
-  images: MlRunImage[];
-}) {
-  const [selectedGroupKey, setSelectedGroupKey] = useState('');
-  const groups = useMemo(() => groupImagesByTrainingPoint(images), [images]);
-  const selectedGroup =
-    groups.find((group) => group.key === selectedGroupKey) ?? groups[0];
-  const recentGroups = groups.slice(0, 8);
-
-  return (
-    <section className="mt-4 rounded-md border bg-card p-4">
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="font-medium">Visual evaluation</div>
-        {images.length > 0 && (
-          <Badge variant="outline">{images.length} latest</Badge>
-        )}
-        {groups.length > 0 && (
-          <select
-            className="ml-auto rounded-md border bg-background px-2 py-1 text-sm"
-            onChange={(event) => setSelectedGroupKey(event.target.value)}
-            value={selectedGroup?.key ?? ''}
-          >
-            {groups.map((group) => (
-              <option key={group.key} value={group.key}>
-                {formatImageGroupLabel(group)} - {group.images.length} images
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-      {images.length === 0 ? (
-        <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
-          No images have been logged for this run yet.
-        </div>
-      ) : (
-        <div className="col gap-4">
-          {selectedGroup && (
-            <VisualComparisonRow group={selectedGroup} size="large" />
-          )}
-          {recentGroups.length > 1 && (
-            <div className="col gap-3">
-              <div className="font-medium text-sm">Recent snapshots</div>
-              {recentGroups.map((group) => (
-                <VisualComparisonRow group={group} key={group.key} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function VisualComparisonRow({
-  group,
-  size = 'compact',
-}: {
-  group: ImageGroup;
-  size?: 'compact' | 'large';
-}) {
-  return (
-    <article className="rounded-md border bg-background p-3">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="font-medium text-sm">{formatImageGroupLabel(group)}</div>
-        <Badge variant="outline">{group.images.length} images</Badge>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {group.images.map((image) => (
-          <ImageCell image={image} key={image.id} size={size} />
-        ))}
-      </div>
-    </article>
-  );
-}
-
-function ImageCell({
-  image,
-  size,
-}: {
-  image: MlRunImage;
-  size: 'compact' | 'large';
-}) {
-  return (
-    <div className="overflow-hidden rounded-md border">
-      <div className={size === 'large' ? 'h-56 bg-def-100' : 'h-36 bg-def-100'}>
-        {image.dataUrl ? (
-          <img
-            alt={image.caption || image.filename}
-            className="h-full w-full object-contain"
-            src={image.dataUrl}
-          />
-        ) : (
-          <div className="center-center h-full text-muted-foreground text-sm">
-            Missing file
-          </div>
-        )}
-      </div>
-      <div className="col gap-2 p-3">
-        <div className="row gap-2">
-          <Badge variant="outline">{image.name}</Badge>
-        </div>
-        <div className="truncate font-medium text-sm">
-          {image.caption || image.filename}
-        </div>
-        {image.width && image.height && (
-          <div className="text-muted-foreground text-xs">
-            {image.width} x {image.height}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function InfoCard({
   label,
   children,
@@ -916,42 +786,6 @@ function normalizeNumberRecord(value: unknown): Record<string, number> {
   return result;
 }
 
-function groupImagesByTrainingPoint(images: MlRunImage[]): ImageGroup[] {
-  const groups = new Map<string, ImageGroup>();
-
-  for (const image of images) {
-    const key = `${image.epoch ?? 'none'}:${image.step ?? 'none'}`;
-    const group = groups.get(key) ?? {
-      key,
-      step: image.step,
-      epoch: image.epoch,
-      images: [],
-    };
-    group.images.push(image);
-
-    groups.set(key, group);
-  }
-
-  return [...groups.values()].map(sortImageGroupImages).sort((a, b) => {
-    const epochDelta = (b.epoch ?? -1) - (a.epoch ?? -1);
-    if (epochDelta !== 0) {
-      return epochDelta;
-    }
-
-    return (b.step ?? -1) - (a.step ?? -1);
-  });
-}
-
-function sortImageGroupImages(group: ImageGroup): ImageGroup {
-  return {
-    ...group,
-    images: [...group.images].sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    ),
-  };
-}
-
 function formatNumber(value: number) {
   return Number.isInteger(value) ? value : value.toFixed(4);
 }
@@ -996,16 +830,4 @@ function getOrderedImageNames(images: MlRunImage[]) {
   }
 
   return [...names];
-}
-
-function formatImageGroupLabel(group: Pick<ImageGroup, 'epoch' | 'step'>) {
-  const parts = [];
-  if (group.epoch !== null) {
-    parts.push(`Epoch ${group.epoch}`);
-  }
-  if (group.step !== null) {
-    parts.push(`Step ${group.step}`);
-  }
-
-  return parts.length > 0 ? parts.join(' - ') : 'Unscoped images';
 }
