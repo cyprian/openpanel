@@ -191,9 +191,9 @@ run = opml.init(
 | Install with PyPI fallback | \`python -m pip install --extra-index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Upgrade package | \`python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Install secure-storage extra | \`python -m pip install "openpanel-ml[secure-storage]"\` |
-| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.4"\` |
+| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.5"\` |
 
-Current published version: \`0.0.4\`.
+Current published version: \`0.0.5\`.
 
 ## Authentication
 
@@ -281,18 +281,27 @@ Metrics appear as run charts with axes, hover tooltips, and final metric summari
 Log image outputs directly from your training or evaluation loop. Images can be local file paths or bytes, and the image name becomes the dashboard label.
 
 \`\`\`python
-run.log_image("Result", "outputs/result-0001.png", step=120, epoch=1)
+run.log_image(
+    "prediction",
+    "outputs/result-0001.png",
+    step=120,
+    epoch=1,
+    metadata={"stage": "val", "sample": "sample_0001", "kind": "prediction"},
+)
 \`\`\`
+
+Use stable names such as \`ground_truth\`, \`prediction\`, \`mask\`, \`overlay\`, or \`pixel_diff_heatmap\` when you want images to line up as columns in the dashboard. Put sample-specific details in \`metadata\`: stage, sample id, class, threshold, fold, or dataset split. The SDK accepts slashes in image names for readability, but local filenames are sanitized before they are written to disk.
 
 Use \`every\` to reduce upload volume:
 
 \`\`\`python
 run.log_image(
-    "Heatmap",
+    "pixel_diff_heatmap",
     heatmap_png_bytes,
     filename="heatmap-0120.png",
     content_type="image/png",
     step=120,
+    metadata={"stage": "val", "sample": "sample_0042"},
     every=50,
 )
 \`\`\`
@@ -301,14 +310,15 @@ Log multiple images for the same step with \`run.log_images()\`. The order you p
 
 \`\`\`python
 run.log_images(
-    [
-        ("Input", "samples/input-00042.png"),
-        ("GT", "samples/gt-00042.png"),
-        ("Result", "outputs/result-00042.png"),
-        ("Heatmap", "outputs/heatmap-00042.png"),
-    ],
+    {
+        "input": "samples/input-00042.png",
+        "ground_truth": "samples/gt-00042.png",
+        "prediction": "outputs/result-00042.png",
+        "pixel_diff_heatmap": "outputs/heatmap-00042.png",
+    },
     step=250,
     epoch=2,
+    metadata={"stage": "val", "sample": "sample_0042"},
 )
 \`\`\`
 
@@ -325,19 +335,19 @@ Evaluation rows are also flexible. Send one image, two images, or ten named imag
   },
   "images": [
     {
-      "name": "GT",
+      "name": "ground_truth",
       "filename": "gt-00042.png",
       "contentType": "image/png",
       "image": "base64-or-data-url"
     },
     {
-      "name": "Result",
+      "name": "prediction",
       "filename": "result-00042.png",
       "contentType": "image/png",
       "image": "base64-or-data-url"
     },
     {
-      "name": "Heatmap",
+      "name": "pixel_diff_heatmap",
       "filename": "heatmap-00042.png",
       "contentType": "image/png",
       "image": "base64-or-data-url"
@@ -404,7 +414,17 @@ Sync queued local events later:
 \`\`\`bash
 openpanel-ml sync
 openpanel-ml sync --root ./openpanel-ml
+openpanel-ml sync --force
 \`\`\`
+
+Inspect the queue without contacting OpenPanel:
+
+\`\`\`bash
+openpanel-ml queue status
+openpanel-ml queue status --root ./openpanel-ml
+\`\`\`
+
+\`sync --force\` retries pending events even when they have a future \`next_attempt_at\`. Permanent client errors, such as malformed payloads, move to \`queue/failed\`; retryable network, auth, rate-limit, and conflict errors stay in \`queue/pending\` with retry metadata.
 
 Resume the latest unfinished local run for a project:
 
@@ -464,20 +484,24 @@ https://analytics.eyepic.io/packages/simple
 | \`POST\` | \`/ml/runs/:runId/images\` | upload a run image |
 | \`POST\` | \`/ml/runs/:runId/evaluations\` | log a visual evaluation table row |
 
-Single image payloads use a required \`name\`:
+Single image payloads use a required \`name\`. Prefer stable names and move sample-specific labels into \`metadata\`:
 
 \`\`\`json
 {
-  "name": "Overlay",
+  "name": "overlay",
   "step": 120,
   "epoch": 1,
   "filename": "overlay-0120.png",
   "contentType": "image/png",
-  "image": "base64-or-data-url"
+  "image": "base64-or-data-url",
+  "metadata": {
+    "stage": "val",
+    "sample": "sample_0042"
+  }
 }
 \`\`\`
 
-Evaluation payloads use an ordered \`images\` array. Each item needs its own \`name\`; there are no fixed image types.
+Evaluation payloads use an ordered \`images\` array. Each item needs its own \`name\`; there are no fixed image types. Use the same image names for every sample when you want the dashboard columns to stay stable.
 `;
 
 const copyContent = `OpenPanel ML Tracking Docs
@@ -600,8 +624,6 @@ function Component() {
   return (
     <PageContainer className="max-w-7xl">
       <PageHeader
-        className="mb-8"
-        description="Use the Python SDK to log training runs, metrics, images, local artifacts, and model metadata."
         actions={
           <Button
             icon={CopyIcon}
@@ -611,6 +633,8 @@ function Component() {
             Copy
           </Button>
         }
+        className="mb-8"
+        description="Use the Python SDK to log training runs, metrics, images, local artifacts, and model metadata."
         title="ML Tracking Docs"
       />
 
@@ -626,8 +650,8 @@ function Component() {
             </h2>
             <p className="mt-3 max-w-2xl text-muted-foreground leading-7">
               Keep training telemetry next to the rest of your OpenPanel
-              project: runs, charts, images, local artifacts, comparisons, and the API
-              surface used by the SDK.
+              project: runs, charts, images, local artifacts, comparisons, and
+              the API surface used by the SDK.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
