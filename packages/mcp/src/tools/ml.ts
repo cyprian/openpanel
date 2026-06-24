@@ -341,14 +341,14 @@ export function registerMlTools(server: McpServer, context: McpAuthContext) {
 
   server.tool(
     'list_ml_images',
-    'List image artifacts logged for an ML run. Returns image metadata and URLs only, not embedded image bytes.',
+    'List image artifacts logged for an ML run. Returns image metadata, flexible display names, and URLs only, not embedded image bytes.',
     {
       projectId: projectIdSchema(context),
       runId: z.string().describe('Run ID to list images for'),
-      kind: z
-        .enum(['input', 'ground_truth', 'prediction', 'error_map'])
+      name: z
+        .string()
         .optional()
-        .describe('Optional image kind filter'),
+        .describe('Optional image display name filter, e.g. Input, GT, Heatmap'),
       step: z.number().int().nonnegative().optional().describe('Optional training step filter'),
       epoch: z.number().int().nonnegative().optional().describe('Optional epoch filter'),
       limit: z
@@ -360,7 +360,7 @@ export function registerMlTools(server: McpServer, context: McpAuthContext) {
         .optional()
         .describe('Maximum number of images to return'),
     },
-    async ({ projectId: inputProjectId, runId, kind, step, epoch, limit }) =>
+    async ({ projectId: inputProjectId, runId, name, step, epoch, limit }) =>
       withErrorHandling(async () => {
         const projectId = await resolveProjectId(context, inputProjectId);
         await assertMlProject(projectId);
@@ -372,7 +372,7 @@ export function registerMlTools(server: McpServer, context: McpAuthContext) {
         const images = await listMlImages({
           projectId,
           runId,
-          kind,
+          name,
           step,
           epoch,
           limit,
@@ -388,7 +388,7 @@ export function registerMlTools(server: McpServer, context: McpAuthContext) {
           ),
           images: images.map((image) => ({
             id: image.id,
-            kind: image.kind,
+            name: image.kind,
             step: image.step,
             epoch: image.epoch,
             caption: image.caption,

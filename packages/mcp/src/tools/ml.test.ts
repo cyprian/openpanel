@@ -162,11 +162,11 @@ describe('registerMlTools', () => {
     mocks.listMlImages.mockResolvedValue([
       {
         id: 'image-1',
-        kind: 'prediction',
+        kind: 'Result',
         step: 1,
         epoch: 1,
-        caption: 'prediction',
-        filename: 'prediction.png',
+        caption: 'result',
+        filename: 'result.png',
         contentType: 'image/png',
         sizeBytes: 123,
         width: 10,
@@ -183,6 +183,8 @@ describe('registerMlTools', () => {
     });
 
     expect(result.images[0].url).toBe('ml://local/image-1');
+    expect(result.images[0].name).toBe('Result');
+    expect(result.images[0].kind).toBeUndefined();
     expect(result.images[0].dataUrl).toBeUndefined();
   });
 

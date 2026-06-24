@@ -433,7 +433,7 @@ export async function getMlMetricSeries(input: {
 export async function createMlImage(input: {
   projectId: string;
   runId: string;
-  kind: string;
+  name: string;
   step?: number;
   epoch?: number | null;
   caption?: string | null;
@@ -466,7 +466,7 @@ export async function createMlImage(input: {
       organizationId: run.organizationId,
       mlProjectId: run.mlProjectId,
       runId: run.id,
-      kind: input.kind,
+      kind: input.name,
       step: input.step,
       epoch: input.epoch,
       caption: input.caption,
@@ -486,7 +486,7 @@ export async function createMlImage(input: {
 export async function listMlImages(input: {
   projectId: string;
   runId: string;
-  kind?: string;
+  name?: string;
   step?: number;
   epoch?: number;
   limit?: number;
@@ -495,7 +495,7 @@ export async function listMlImages(input: {
     where: {
       projectId: input.projectId,
       runId: input.runId,
-      kind: input.kind,
+      kind: input.name,
       step: input.step,
       epoch: input.epoch,
     },
@@ -509,7 +509,7 @@ export async function listMlImages(input: {
 export async function listMlImagesWithData(input: {
   projectId: string;
   runId: string;
-  kind?: string;
+  name?: string;
   step?: number;
   epoch?: number;
   limit?: number;
@@ -519,23 +519,17 @@ export async function listMlImagesWithData(input: {
   return Promise.all(
     images.map(async (image) => {
       if (image.storageProvider !== ML_IMAGE_STORAGE_PROVIDER_LOCAL) {
-        return {
-          ...image,
-          dataUrl: image.url,
-        };
+        return attachMlImageDisplayFields(image, image.url);
       }
 
       try {
         const buffer = await readFile(getMlImageStoragePath(image.storageKey));
-        return {
-          ...image,
-          dataUrl: `data:${image.contentType};base64,${buffer.toString('base64')}`,
-        };
+        return attachMlImageDisplayFields(
+          image,
+          `data:${image.contentType};base64,${buffer.toString('base64')}`
+        );
       } catch {
-        return {
-          ...image,
-          dataUrl: '',
-        };
+        return attachMlImageDisplayFields(image, '');
       }
     })
   );
@@ -659,26 +653,31 @@ async function listMlImagesByIdsWithData(input: {
   return Promise.all(
     images.map(async (image) => {
       if (image.storageProvider !== ML_IMAGE_STORAGE_PROVIDER_LOCAL) {
-        return {
-          ...image,
-          dataUrl: image.url,
-        };
+        return attachMlImageDisplayFields(image, image.url);
       }
 
       try {
         const buffer = await readFile(getMlImageStoragePath(image.storageKey));
-        return {
-          ...image,
-          dataUrl: `data:${image.contentType};base64,${buffer.toString('base64')}`,
-        };
+        return attachMlImageDisplayFields(
+          image,
+          `data:${image.contentType};base64,${buffer.toString('base64')}`
+        );
       } catch {
-        return {
-          ...image,
-          dataUrl: '',
-        };
+        return attachMlImageDisplayFields(image, '');
       }
     })
   );
+}
+
+function attachMlImageDisplayFields<T extends { kind: string }>(
+  image: T,
+  dataUrl: string
+) {
+  return {
+    ...image,
+    name: image.kind,
+    dataUrl,
+  };
 }
 
 function getEvaluationRowOrderBy(

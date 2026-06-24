@@ -173,7 +173,7 @@ export async function logImage(
   const image = await persistMlImage({
     projectId: project.id,
     run,
-    kind: request.body.kind,
+    name: request.body.name,
     image: request.body,
     step: request.body.step,
     epoch: request.body.epoch,
@@ -181,7 +181,7 @@ export async function logImage(
 
   return reply.status(202).send({
     id: image.id,
-    kind: image.kind,
+    name: image.kind,
     step: image.step,
     epoch: image.epoch,
     width: image.width,
@@ -207,15 +207,12 @@ export async function logEvaluation(
   }
 
   const images: Awaited<ReturnType<typeof createMlImage>>[] = [];
-  for (const [kind, image] of Object.entries(request.body.images)) {
-    if (!image) {
-      continue;
-    }
+  for (const image of request.body.images) {
     images.push(
       await persistMlImage({
         projectId: project.id,
         run,
-        kind,
+        name: image.name,
         image,
         step: request.body.step,
         epoch: request.body.epoch,
@@ -247,15 +244,16 @@ export async function logEvaluation(
 async function persistMlImage({
   projectId,
   run,
-  kind,
+  name,
   image,
   step,
   epoch,
 }: {
   projectId: string;
   run: NonNullable<Awaited<ReturnType<typeof getMlRunById>>>;
-  kind: string;
+  name: string;
   image: {
+    name: string;
     image: string;
     filename?: string;
     contentType?: string;
@@ -283,7 +281,7 @@ async function persistMlImage({
   return createMlImage({
     projectId,
     runId: run.id,
-    kind,
+    name,
     step,
     epoch,
     caption: image.caption,

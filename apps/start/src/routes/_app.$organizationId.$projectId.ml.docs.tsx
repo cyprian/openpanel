@@ -57,7 +57,7 @@ const summaryCards = [
   },
   {
     title: 'Images',
-    description: 'Upload predictions, ground truth, and error maps.',
+    description: 'Upload any named visual output your project needs.',
     icon: ImagesIcon,
   },
   {
@@ -278,37 +278,72 @@ Metrics appear as run charts with axes, hover tooltips, and final metric summari
 
 ## Visual outputs
 
-Log image outputs directly from your training or evaluation loop. Images can be local file paths or bytes.
+Log image outputs directly from your training or evaluation loop. Images can be local file paths or bytes, and the image name becomes the dashboard label.
 
 \`\`\`python
-run.log_image("prediction", "outputs/prediction-0001.png", step=120, epoch=1)
+run.log_image("Result", "outputs/result-0001.png", step=120, epoch=1)
 \`\`\`
 
 Use \`every\` to reduce upload volume:
 
 \`\`\`python
 run.log_image(
-    "prediction",
-    prediction_png_bytes,
-    filename="prediction-0120.png",
+    "Heatmap",
+    heatmap_png_bytes,
+    filename="heatmap-0120.png",
     content_type="image/png",
     step=120,
     every=50,
 )
 \`\`\`
 
-Log multiple images for the same step with \`run.log_images()\`:
+Log multiple images for the same step with \`run.log_images()\`. The order you provide is the order used in visual comparisons.
 
 \`\`\`python
 run.log_images(
-    {
-        "input": "samples/input-00042.png",
-        "prediction": "outputs/pred-00042.png",
-        "mask": "outputs/mask-00042.png",
-    },
+    [
+        ("Input", "samples/input-00042.png"),
+        ("GT", "samples/gt-00042.png"),
+        ("Result", "outputs/result-00042.png"),
+        ("Heatmap", "outputs/heatmap-00042.png"),
+    ],
     step=250,
     epoch=2,
 )
+\`\`\`
+
+Evaluation rows are also flexible. Send one image, two images, or ten named images for a sample; the table columns are derived from the image names in the order they are logged.
+
+\`\`\`json
+{
+  "sampleId": "sample-00042",
+  "step": 250,
+  "epoch": 2,
+  "metrics": {
+    "dice": 0.94,
+    "iou": 0.89
+  },
+  "images": [
+    {
+      "name": "GT",
+      "filename": "gt-00042.png",
+      "contentType": "image/png",
+      "image": "base64-or-data-url"
+    },
+    {
+      "name": "Result",
+      "filename": "result-00042.png",
+      "contentType": "image/png",
+      "image": "base64-or-data-url"
+    },
+    {
+      "name": "Heatmap",
+      "filename": "heatmap-00042.png",
+      "contentType": "image/png",
+      "image": "base64-or-data-url"
+    }
+  ]
+}
 \`\`\`
 
 ## Local artifacts and metadata
@@ -400,7 +435,7 @@ run.finish("failed")
 | ML Projects | model or experiment groups |
 | Runs | all runs across the current OpenPanel project |
 | Run detail | final metrics, metric charts, config, metadata, notes, tags, and images |
-| Images | predictions, masks, and error maps attached to runs |
+| Images | named visual outputs attached to runs |
 | Compare | overlaid metric charts, hyperparameters, metadata, and final metrics |
 
 ## Storage
@@ -428,6 +463,21 @@ https://analytics.eyepic.io/packages/simple
 | \`POST\` | \`/ml/runs/:runId/log\` | log scalar metrics |
 | \`POST\` | \`/ml/runs/:runId/images\` | upload a run image |
 | \`POST\` | \`/ml/runs/:runId/evaluations\` | log a visual evaluation table row |
+
+Single image payloads use a required \`name\`:
+
+\`\`\`json
+{
+  "name": "Overlay",
+  "step": 120,
+  "epoch": 1,
+  "filename": "overlay-0120.png",
+  "contentType": "image/png",
+  "image": "base64-or-data-url"
+}
+\`\`\`
+
+Evaluation payloads use an ordered \`images\` array. Each item needs its own \`name\`; there are no fixed image types.
 `;
 
 const copyContent = `OpenPanel ML Tracking Docs

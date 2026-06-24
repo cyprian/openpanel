@@ -254,16 +254,9 @@ export function MlRunDetail({
   );
 }
 
-const IMAGE_KIND_COLUMNS = [
-  'input',
-  'ground_truth',
-  'prediction',
-  'error_map',
-] as const;
-
 type MlRunImage = {
   id: string;
-  kind: string;
+  name: string;
   step: number | null;
   epoch: number | null;
   caption: string | null;
@@ -271,6 +264,7 @@ type MlRunImage = {
   width: number | null;
   height: number | null;
   dataUrl: string;
+  createdAt: Date | string;
 };
 
 type MlEvaluationRow = {
@@ -305,7 +299,6 @@ type ImageGroup = {
   step: number | null;
   epoch: number | null;
   images: MlRunImage[];
-  byKind: Partial<Record<(typeof IMAGE_KIND_COLUMNS)[number], MlRunImage[]>>;
 };
 
 type MetricSeriesQueryResult = {
@@ -451,6 +444,10 @@ function EvaluationTable({
       return sortDirection === 'asc' ? delta : -delta;
     });
   }, [data?.rows, metricKeys, sortBy, sortDirection]);
+  const imageColumnNames = useMemo(
+    () => getOrderedImageNames(rows.flatMap((row) => row.images)),
+    [rows]
+  );
   const totalPages = data?.totalPages ?? 1;
 
   return (
@@ -508,46 +505,54 @@ function EvaluationTable({
         </div>
       ) : (
         <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Sample</TableHead>
-                <TableHead>Epoch</TableHead>
-                <TableHead>Step</TableHead>
-                {IMAGE_KIND_COLUMNS.map((kind) => (
-                  <TableHead key={kind}>{formatImageKind(kind)}</TableHead>
-                ))}
-                {metricKeys.map((key) => (
-                  <TableHead className="text-right" key={key}>
-                    {key}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium">
-                    {row.sampleId ?? row.id.slice(0, 8)}
-                  </TableCell>
-                  <TableCell>{row.epoch ?? '-'}</TableCell>
-                  <TableCell>{row.step ?? '-'}</TableCell>
-                  {IMAGE_KIND_COLUMNS.map((kind) => (
-                    <TableCell key={kind}>
-                      <EvaluationImageThumb
-                        image={row.images.find((image) => image.kind === kind)}
-                      />
-                    </TableCell>
+          <div className="overflow-x-auto">
+            <Table className="min-w-max">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-32">Sample</TableHead>
+                  <TableHead>Epoch</TableHead>
+                  <TableHead>Step</TableHead>
+                  {imageColumnNames.map((name) => (
+                    <TableHead className="min-w-28" key={name}>
+                      {name}
+                    </TableHead>
                   ))}
                   {metricKeys.map((key) => (
-                    <TableCell className="text-right font-mono" key={key}>
-                      {formatMetricValue(getNumericMetric(row.metrics, key))}
-                    </TableCell>
+                    <TableHead className="min-w-24 text-right" key={key}>
+                      {key}
+                    </TableHead>
                   ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="font-medium">
+                      {row.sampleId ?? row.id.slice(0, 8)}
+                    </TableCell>
+                    <TableCell>{row.epoch ?? '-'}</TableCell>
+                    <TableCell>{row.step ?? '-'}</TableCell>
+                    {imageColumnNames.map((name) => {
+                      const images = row.images.filter(
+                        (image) => image.name === name
+                      );
+
+                      return (
+                        <TableCell key={name}>
+                          <EvaluationImageThumb images={images} />
+                        </TableCell>
+                      );
+                    })}
+                    {metricKeys.map((key) => (
+                      <TableCell className="text-right font-mono" key={key}>
+                        {formatMetricValue(getNumericMetric(row.metrics, key))}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
             <div className="text-muted-foreground text-sm">
               Page {page} of {totalPages}
@@ -575,13 +580,14 @@ function EvaluationTable({
   );
 }
 
-function EvaluationImageThumb({ image }: { image?: MlRunImage }) {
+function EvaluationImageThumb({ images }: { images: MlRunImage[] }) {
+  const image = images[0];
   if (!image) {
     return <span className="text-muted-foreground text-xs">-</span>;
   }
 
   return (
-    <div className="h-16 w-20 overflow-hidden rounded-md border bg-def-100">
+    <div className="relative h-16 w-20 overflow-hidden rounded-md border bg-def-100">
       {image.dataUrl ? (
         <img
           alt={image.caption || image.filename}
@@ -592,6 +598,11 @@ function EvaluationImageThumb({ image }: { image?: MlRunImage }) {
       ) : (
         <div className="center-center h-full text-muted-foreground text-xs">
           Missing
+        </div>
+      )}
+      {images.length > 1 && (
+        <div className="absolute right-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 font-medium text-[10px] shadow">
+          +{images.length - 1}
         </div>
       )}
     </div>
@@ -667,35 +678,25 @@ function VisualComparisonRow({
         <Badge variant="outline">{group.images.length} images</Badge>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {IMAGE_KIND_COLUMNS.map((kind) => (
-          <ImageKindCell
-            image={group.byKind[kind]?.[0]}
-            key={kind}
-            kind={kind}
-            size={size}
-            total={group.byKind[kind]?.length ?? 0}
-          />
+        {group.images.map((image) => (
+          <ImageCell image={image} key={image.id} size={size} />
         ))}
       </div>
     </article>
   );
 }
 
-function ImageKindCell({
+function ImageCell({
   image,
-  kind,
   size,
-  total,
 }: {
-  image?: MlRunImage;
-  kind: (typeof IMAGE_KIND_COLUMNS)[number];
+  image: MlRunImage;
   size: 'compact' | 'large';
-  total: number;
 }) {
   return (
     <div className="overflow-hidden rounded-md border">
       <div className={size === 'large' ? 'h-56 bg-def-100' : 'h-36 bg-def-100'}>
-        {image?.dataUrl ? (
+        {image.dataUrl ? (
           <img
             alt={image.caption || image.filename}
             className="h-full w-full object-contain"
@@ -703,28 +704,21 @@ function ImageKindCell({
           />
         ) : (
           <div className="center-center h-full text-muted-foreground text-sm">
-            {image ? 'Missing file' : 'No image'}
+            Missing file
           </div>
         )}
       </div>
       <div className="col gap-2 p-3">
         <div className="row gap-2">
-          <Badge variant="outline">{formatImageKind(kind)}</Badge>
-          {total > 1 && <Badge variant="outline">+{total - 1}</Badge>}
+          <Badge variant="outline">{image.name}</Badge>
         </div>
-        {image ? (
-          <>
-            <div className="truncate font-medium text-sm">
-              {image.caption || image.filename}
-            </div>
-            {image.width && image.height && (
-              <div className="text-muted-foreground text-xs">
-                {image.width} x {image.height}
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="text-muted-foreground text-xs">Not logged</div>
+        <div className="truncate font-medium text-sm">
+          {image.caption || image.filename}
+        </div>
+        {image.width && image.height && (
+          <div className="text-muted-foreground text-xs">
+            {image.width} x {image.height}
+          </div>
         )}
       </div>
     </div>
@@ -932,18 +926,13 @@ function groupImagesByTrainingPoint(images: MlRunImage[]): ImageGroup[] {
       step: image.step,
       epoch: image.epoch,
       images: [],
-      byKind: {},
     };
     group.images.push(image);
-
-    if (isImageKindColumn(image.kind)) {
-      group.byKind[image.kind] = [...(group.byKind[image.kind] ?? []), image];
-    }
 
     groups.set(key, group);
   }
 
-  return [...groups.values()].sort((a, b) => {
+  return [...groups.values()].map(sortImageGroupImages).sort((a, b) => {
     const epochDelta = (b.epoch ?? -1) - (a.epoch ?? -1);
     if (epochDelta !== 0) {
       return epochDelta;
@@ -953,10 +942,14 @@ function groupImagesByTrainingPoint(images: MlRunImage[]): ImageGroup[] {
   });
 }
 
-function isImageKindColumn(
-  kind: string
-): kind is (typeof IMAGE_KIND_COLUMNS)[number] {
-  return IMAGE_KIND_COLUMNS.includes(kind as (typeof IMAGE_KIND_COLUMNS)[number]);
+function sortImageGroupImages(group: ImageGroup): ImageGroup {
+  return {
+    ...group,
+    images: [...group.images].sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    ),
+  };
 }
 
 function formatNumber(value: number) {
@@ -996,11 +989,13 @@ function formatAxisNumber(value: number) {
   return value.toFixed(3);
 }
 
-function formatImageKind(kind: string) {
-  return kind
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
+function getOrderedImageNames(images: MlRunImage[]) {
+  const names = new Set<string>();
+  for (const image of images) {
+    names.add(image.name);
+  }
+
+  return [...names];
 }
 
 function formatImageGroupLabel(group: Pick<ImageGroup, 'epoch' | 'step'>) {
