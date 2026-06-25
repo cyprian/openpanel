@@ -191,9 +191,9 @@ run = opml.init(
 | Install with PyPI fallback | \`python -m pip install --extra-index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Upgrade package | \`python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Install secure-storage extra | \`python -m pip install "openpanel-ml[secure-storage]"\` |
-| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.6"\` |
+| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.7"\` |
 
-Current published version: \`0.0.6\`.
+Current published version: \`0.0.7\`.
 
 ## Authentication
 
@@ -227,6 +227,7 @@ import openpanel_ml as opml
 run = opml.init(
     project="eyepic-iris-detection-mobile",
     experiment="experiment-name",
+    name="experiment-name",
     config={
         "model": "your-model",
         "learning_rate": 1e-4,
@@ -253,6 +254,8 @@ except Exception:
 \`\`\`
 
 The SDK creates a local run id immediately, then stores the server UUID returned by OpenPanel after the first sync. Metrics, images, and status updates automatically use the server UUID once it is available.
+
+\`name\` is the top-level run name used in dashboard tables and metric chart legends. If you omit \`name\`, the SDK uses \`experiment\` as the run name so the dashboard does not fall back to generated \`Run <timestamp>\` labels.
 
 ## Track metrics
 
