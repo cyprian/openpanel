@@ -25,7 +25,8 @@ import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
 import { useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
+import { ArrowRightIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   CartesianGrid,
@@ -63,7 +64,7 @@ const COLORS = [
 ];
 
 function Component() {
-  const { projectId } = Route.useParams();
+  const { organizationId, projectId } = Route.useParams();
   const trpc = useTRPC();
   const runs = useQuery(trpc.ml.runs.queryOptions({ projectId }));
   const metricNames = useQuery(trpc.ml.metricNames.queryOptions({ projectId }));
@@ -141,9 +142,9 @@ function Component() {
               const checked = effectiveRunIds.includes(run.id);
               const color = runColors.get(run.id) ?? getRunColor(index);
               return (
-                <label
+                <div
                   key={run.id}
-                  className="row cursor-pointer gap-3 rounded-md px-2 py-2 hover:bg-def-100"
+                  className="row gap-3 rounded-md px-2 py-2 hover:bg-def-100"
                 >
                   <Checkbox
                     checked={checked}
@@ -157,17 +158,28 @@ function Component() {
                       });
                     }}
                   />
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">
-                      {run.name}
+                  <Link
+                    className="row min-w-0 flex-1 gap-3"
+                    to="/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId"
+                    params={{
+                      organizationId,
+                      projectId,
+                      mlProjectId: run.mlProjectId,
+                      runId: run.id,
+                    }}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium hover:underline">
+                        {run.name}
+                      </span>
                     </span>
-                    <MlStatusBadge status={run.status} className="mt-1" />
-                  </span>
-                </label>
+                    <ArrowRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  </Link>
+                </div>
               );
             })}
             {availableRuns.length === 0 && (
@@ -210,6 +222,8 @@ function Component() {
       <section className="mt-4 rounded-md border bg-card p-4">
         <div className="mb-4 font-medium">Final metrics</div>
         <ComparisonTable
+          organizationId={organizationId}
+          projectId={projectId}
           keys={metricKeys}
           runs={selectedRuns}
           getValues={(run) => normalizeNumberRecord(run.summary)}
@@ -227,12 +241,18 @@ function Component() {
   );
 }
 
-function ComparisonTable<TRun extends { id: string; name: string }>({
+function ComparisonTable<
+  TRun extends { id: string; name: string; mlProjectId: string },
+>({
+  organizationId,
+  projectId,
   keys,
   runs,
   getValues,
   getBadge,
 }: {
+  organizationId: string;
+  projectId: string;
   keys: string[];
   runs: TRun[];
   getValues: (run: TRun) => Record<string, unknown>;
@@ -262,7 +282,19 @@ function ComparisonTable<TRun extends { id: string; name: string }>({
           {runs.map((run) => (
             <TableRow key={run.id}>
               <TableCell className="max-w-80 font-medium">
-                <span className="block truncate">{run.name}</span>
+                <Link
+                  className="inline-flex max-w-full items-center gap-2 hover:underline"
+                  to="/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId"
+                  params={{
+                    organizationId,
+                    projectId,
+                    mlProjectId: run.mlProjectId,
+                    runId: run.id,
+                  }}
+                >
+                  <span className="block truncate">{run.name}</span>
+                  <ArrowRightIcon className="size-3.5 shrink-0" />
+                </Link>
               </TableCell>
               {keys.map((key) => {
                 const badge = getBadge?.(key, run);
@@ -326,17 +358,26 @@ function CompareMetricChart({
   runs: Array<{ id: string; name: string; color: string }>;
 }) {
   const chartData = useMemo(() => {
+    const visibleRunIds = new Set(runs.map((run) => run.id));
     const rows = new Map<number, { step: number } & Record<string, number>>();
     for (const item of data) {
+      if (!visibleRunIds.has(item.run_id)) {
+        continue;
+      }
+
       const row = rows.get(item.step) ?? { step: item.step };
       row[item.run_id] = item.value;
       rows.set(item.step, row);
     }
 
     return [...rows.values()].sort((a, b) => a.step - b.step);
-  }, [data]);
+  }, [data, runs]);
+  const chartDomains = useMemo(
+    () => getVisibleChartDomains(chartData, runs),
+    [chartData, runs]
+  );
 
-  if (chartData.length === 0 || runs.length === 0) {
+  if (chartData.length === 0 || runs.length === 0 || !chartDomains) {
     return (
       <div className="center-center h-[280px] text-muted-foreground text-sm">
         No chart data yet.
@@ -361,6 +402,7 @@ function CompareMetricChart({
             <XAxis
               {...X_AXIS_STYLE_PROPS}
               dataKey="step"
+              domain={chartDomains.x}
               label={{
                 value: 'Step',
                 position: 'insideBottom',
@@ -372,6 +414,7 @@ function CompareMetricChart({
             <YAxis
               axisLine={false}
               className="font-mono"
+              domain={chartDomains.y}
               label={{
                 value: metric,
                 angle: -90,
@@ -415,6 +458,58 @@ function CompareMetricChart({
       </div>
     </div>
   );
+}
+
+function getVisibleChartDomains(
+  chartData: Array<{ step: number } & Record<string, number>>,
+  runs: Array<{ id: string }>
+) {
+  const runIds = runs.map((run) => run.id);
+  const steps: number[] = [];
+  const values: number[] = [];
+
+  for (const row of chartData) {
+    let hasVisibleValue = false;
+
+    for (const runId of runIds) {
+      const value = row[runId];
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        continue;
+      }
+
+      hasVisibleValue = true;
+      values.push(value);
+    }
+
+    if (hasVisibleValue && Number.isFinite(row.step)) {
+      steps.push(row.step);
+    }
+  }
+
+  if (steps.length === 0 || values.length === 0) {
+    return null;
+  }
+
+  return {
+    x: getNumericDomain(steps, 0),
+    y: getNumericDomain(values, 0.05),
+  };
+}
+
+function getNumericDomain(
+  values: number[],
+  paddingRatio: number
+): [number, number] {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  if (min === max) {
+    const padding = Math.max(Math.abs(min) * paddingRatio, 1);
+    return [min - padding, max + padding];
+  }
+
+  const padding = (max - min) * paddingRatio;
+  return [min - padding, max + padding];
 }
 
 function CompareMetricTooltip({
