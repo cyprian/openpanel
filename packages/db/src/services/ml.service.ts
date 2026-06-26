@@ -128,6 +128,7 @@ export async function updateMlProject(input: {
   projectId: string;
   name?: string;
   description?: string | null;
+  runColumns?: string[];
 }) {
   const project = await getMlProjectById(input);
   if (!project) {
@@ -141,6 +142,7 @@ export async function updateMlProject(input: {
     data: {
       name: input.name,
       description: input.description,
+      runColumns: input.runColumns,
     },
   });
 }
@@ -221,6 +223,7 @@ export async function createMlRun(input: {
   tags?: string[];
   config?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  keyMetrics?: string[];
 }) {
   const mlProject = await db.mlProject.findFirstOrThrow({
     where: {
@@ -269,6 +272,7 @@ export async function updateMlRun(input: {
   tags?: string[];
   config?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  keyMetrics?: string[];
 }) {
   const run = await getMlRunById(input);
   if (!run) {
@@ -293,6 +297,7 @@ export async function updateMlRun(input: {
       tags: input.tags,
       config: input.config,
       metadata: input.metadata,
+      keyMetrics: input.keyMetrics,
       startedAt,
       endedAt,
     },
@@ -392,10 +397,14 @@ export async function logMlMetrics(input: {
 
 export async function getMlMetricNames(input: {
   projectId: string;
+  mlProjectId?: string;
   runId?: string;
 }) {
   const where = [
     `project_id = ${sqlstring.escape(input.projectId)}`,
+    input.mlProjectId
+      ? `ml_project_id = ${sqlstring.escape(input.mlProjectId)}`
+      : '',
     input.runId ? `run_id = ${sqlstring.escape(input.runId)}` : '',
   ].filter(Boolean);
   return chQuery<{ metric: string }>(

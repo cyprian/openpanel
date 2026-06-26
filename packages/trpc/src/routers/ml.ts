@@ -103,7 +103,13 @@ export const mlRouter = createTRPCRouter({
     ),
 
   metricNames: protectedProcedure
-    .input(z.object({ projectId: z.string(), runId: z.string().optional() }))
+    .input(
+      z.object({
+        projectId: z.string(),
+        runId: z.string().optional(),
+        mlProjectId: z.string().optional(),
+      })
+    )
     .query(({ input }) => getMlMetricNames(input)),
 
   metricSeries: protectedProcedure

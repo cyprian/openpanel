@@ -1,0 +1,2 @@
+ALTER TABLE "ml_runs"
+ADD COLUMN "keyMetrics" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

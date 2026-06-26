@@ -26,18 +26,24 @@ import {
   ChartTooltipItem,
 } from '@/components/charts/chart-tooltip';
 import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
-import { useTRPC } from '@/integrations/trpc/react';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import {
   ArrowLeftIcon,
   BracesIcon,
   DatabaseIcon,
+  KeyIcon,
   type LucideIcon,
 } from 'lucide-react';
 import type React from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CartesianGrid,
   Line,
@@ -50,6 +56,16 @@ import {
 } from 'recharts';
 
 const ML_CHART_BLUE = '#2563eb';
+const KEY_METRIC_COLORS = [
+  ML_CHART_BLUE,
+  '#16a34a',
+  '#9333ea',
+  '#ca8a04',
+  '#dc2626',
+  '#0891b2',
+  '#db2777',
+  '#4f46e5',
+];
 
 export function MlRunDetail({
   organizationId,
@@ -63,8 +79,19 @@ export function MlRunDetail({
   fallbackMlProjectId?: string;
 }) {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [selectedKeyMetrics, setSelectedKeyMetrics] = useState<string[]>([]);
   const run = useQuery(trpc.ml.run.queryOptions({ projectId, id: runId }));
+  const updateRun = useMutation(
+    trpc.ml.updateRun.mutationOptions({
+      onError: handleErrorToastOptions({}),
+      onSettled() {
+        queryClient.invalidateQueries(trpc.ml.run.pathFilter());
+        queryClient.invalidateQueries(trpc.ml.runs.pathFilter());
+      },
+    })
+  );
   const metricNames = useQuery(
     trpc.ml.metricNames.queryOptions({ projectId, runId })
   );
@@ -106,10 +133,42 @@ export function MlRunDetail({
     enabled: !!run.data,
   });
   const summary = normalizeNumberRecord(run.data?.summary);
+  const keyMetrics = selectedKeyMetrics.filter(
+    (metric) => summary[metric] !== undefined
+  );
+  const keyMetricTextColors = useMemo(
+    () =>
+      new Map(
+        keyMetrics.map(
+          (metric, index) => [metric, getKeyMetricColor(index)] as const
+        )
+      ),
+    [keyMetrics]
+  );
   const config = normalizeRecord(run.data?.config);
   const metadata = normalizeRecord(run.data?.metadata);
   const mlProjectId = run.data?.mlProjectId ?? fallbackMlProjectId;
   const hasEvaluationRows = (evaluationSummary.data?.total ?? 0) > 0;
+
+  useEffect(() => {
+    setSelectedKeyMetrics(run.data?.keyMetrics ?? []);
+  }, [run.data?.keyMetrics]);
+
+  const updateKeyMetrics = (metrics: string[]) => {
+    setSelectedKeyMetrics(metrics);
+    updateRun.mutate({
+      id: runId,
+      projectId,
+      keyMetrics: metrics,
+    });
+  };
+
+  const toggleKeyMetric = (metric: string) => {
+    const metrics = selectedKeyMetrics.includes(metric)
+      ? selectedKeyMetrics.filter((item) => item !== metric)
+      : [...new Set([...selectedKeyMetrics, metric])];
+    updateKeyMetrics(metrics);
+  };
 
   return (
     <PageContainer>
@@ -199,6 +258,31 @@ export function MlRunDetail({
           <p className="whitespace-pre-wrap text-sm">{run.data.notes}</p>
         </section>
       )}
+      {keyMetrics.length > 0 && (
+        <section className="mb-4 rounded-md border bg-card p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div>
+              <div className="font-medium">Key metrics</div>
+              <div className="text-muted-foreground text-xs">
+                Highlighted final values for this run
+              </div>
+            </div>
+            <Badge className="ml-auto" variant="outline">
+              {keyMetrics.length} metrics
+            </Badge>
+          </div>
+          <MetricsGrid
+            chartMetricNames={metricItems.map((item) => item.metric)}
+            keyMetrics={selectedKeyMetrics}
+            metricTextColors={keyMetricTextColors}
+            metrics={Object.fromEntries(
+              keyMetrics.map((metric) => [metric, summary[metric]])
+            )}
+            onToggleKeyMetric={toggleKeyMetric}
+            showKeyToggle={false}
+          />
+        </section>
+      )}
       <section className="mb-4 rounded-md border bg-card p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div>
@@ -213,7 +297,12 @@ export function MlRunDetail({
             </Badge>
           )}
         </div>
-        <FinalMetricsGrid summary={summary} />
+        <MetricsGrid
+          chartMetricNames={metricItems.map((item) => item.metric)}
+          keyMetrics={selectedKeyMetrics}
+          metrics={summary}
+          onToggleKeyMetric={toggleKeyMetric}
+        />
       </section>
       <MetricChartsSection
         isLoadingMetricNames={metricNames.isLoading}
@@ -292,8 +381,24 @@ type MetricSeriesQueryResult = {
   isLoading: boolean;
 };
 
-function FinalMetricsGrid({ summary }: { summary: Record<string, number> }) {
-  const entries = Object.entries(summary);
+function MetricsGrid({
+  chartMetricNames,
+  keyMetrics,
+  metricTextColors,
+  metrics,
+  onToggleKeyMetric,
+  showKeyToggle = true,
+}: {
+  chartMetricNames: string[];
+  keyMetrics: string[];
+  metricTextColors?: Map<string, string>;
+  metrics: Record<string, number>;
+  onToggleKeyMetric: (metric: string) => void;
+  showKeyToggle?: boolean;
+}) {
+  const entries = Object.entries(metrics);
+  const chartMetricNameSet = new Set(chartMetricNames);
+  const keyMetricSet = new Set(keyMetrics);
 
   if (entries.length === 0) {
     return (
@@ -305,14 +410,49 @@ function FinalMetricsGrid({ summary }: { summary: Record<string, number> }) {
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {entries.map(([key, value]) => (
-        <article className="rounded-md border bg-background p-3" key={key}>
-          <div className="truncate text-muted-foreground text-xs">{key}</div>
-          <div className="mt-1 truncate font-mono font-semibold text-lg">
-            {formatNumber(value)}
-          </div>
-        </article>
-      ))}
+      {entries.map(([key, value]) => {
+        const hasChart = chartMetricNameSet.has(key);
+        const isKeyMetric = keyMetricSet.has(key);
+        const textColor = metricTextColors?.get(key);
+
+        return (
+          <article
+            className="relative rounded-md border bg-background transition-colors hover:bg-accent"
+            key={key}
+          >
+            {showKeyToggle && (
+              <button
+                aria-label={
+                  isKeyMetric
+                    ? `Remove ${key} from key metrics`
+                    : `Add ${key} to key metrics`
+                }
+                className="absolute top-2 right-2 z-10 rounded-sm p-1 text-white/50 transition-colors hover:text-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[selected=true]:text-amber-400"
+                data-selected={isKeyMetric}
+                onClick={() => onToggleKeyMetric(key)}
+                type="button"
+              >
+                <KeyIcon className="size-3.5" />
+              </button>
+            )}
+            <button
+              className="block w-full p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default data-[with-key-toggle=true]:pr-9"
+              data-with-key-toggle={showKeyToggle}
+              disabled={!hasChart}
+              onClick={() => scrollToMetricChart(key)}
+              type="button"
+            >
+              <div className="truncate text-muted-foreground text-xs">{key}</div>
+              <div
+                className="mt-1 truncate font-mono font-semibold text-lg"
+                style={{ color: textColor }}
+              >
+                {formatNumber(value)}
+              </div>
+            </button>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -361,7 +501,8 @@ function MetricChartsSection({
 
             return (
               <article
-                className="overflow-hidden rounded-md border bg-background"
+                className="scroll-mt-24 overflow-hidden rounded-md border bg-background"
+                id={getMetricChartId(item.metric)}
                 key={item.metric}
               >
                 <div className="flex min-h-14 flex-wrap items-center gap-2 border-b p-4">
@@ -799,6 +940,21 @@ function getNumericMetric(value: unknown, key: string) {
 
 function formatMetricValue(value: number | null) {
   return typeof value === 'number' ? formatNumber(value) : '-';
+}
+
+function getKeyMetricColor(index: number) {
+  return KEY_METRIC_COLORS[index % KEY_METRIC_COLORS.length];
+}
+
+function getMetricChartId(metric: string) {
+  return `metric-chart-${encodeURIComponent(metric)}`;
+}
+
+function scrollToMetricChart(metric: string) {
+  document.getElementById(getMetricChartId(metric))?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  });
 }
 
 function getLatestMetricSeriesValue(data: MlMetricSeriesPoint[]) {

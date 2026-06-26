@@ -38,6 +38,7 @@ import {
   YAxis,
   type TooltipProps,
 } from 'recharts';
+import { z } from 'zod';
 
 export const Route = createFileRoute(
   '/_app/$organizationId/$projectId/ml/compare',
@@ -45,6 +46,9 @@ export const Route = createFileRoute(
   component: Component,
   head: () => ({
     meta: [{ title: createProjectTitle('Compare ML Runs') }],
+  }),
+  validateSearch: z.object({
+    mlProjectId: z.string().optional(),
   }),
 });
 
@@ -65,9 +69,12 @@ const COLORS = [
 
 function Component() {
   const { organizationId, projectId } = Route.useParams();
+  const { mlProjectId } = Route.useSearch();
   const trpc = useTRPC();
-  const runs = useQuery(trpc.ml.runs.queryOptions({ projectId }));
-  const metricNames = useQuery(trpc.ml.metricNames.queryOptions({ projectId }));
+  const runs = useQuery(trpc.ml.runs.queryOptions({ projectId, mlProjectId }));
+  const metricNames = useQuery(
+    trpc.ml.metricNames.queryOptions({ projectId, mlProjectId })
+  );
   const [selectedRunIds, setSelectedRunIds] = useState<string[] | null>(null);
   const [metric, setMetric] = useState('');
   const selectedMetric = metric || metricNames.data?.[0]?.metric || '';

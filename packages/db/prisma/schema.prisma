@@ -287,6 +287,7 @@ model MlProject {
   runs           MlRun[]
   images         MlImage[]
   evaluationRows MlEvaluationRow[]
+  runColumns      String[]   @default([])
   archivedAt     DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @default(now()) @updatedAt
@@ -309,6 +310,7 @@ model MlRun {
   metadata       Json         @default("{}")
   /// [IPrismaMlRunSummary]
   summary        Json         @default("{}")
+  keyMetrics     String[]     @default([])
   mlProjectId    String       @db.Uuid
   mlProject      MlProject    @relation(fields: [mlProjectId], references: [id], onDelete: Cascade)
   projectId      String

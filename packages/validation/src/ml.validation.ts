@@ -19,6 +19,7 @@ export const zMlProjectUpdate = z.object({
   projectId: z.string(),
   name: z.string().min(1).optional(),
   description: z.string().nullish(),
+  runColumns: z.array(z.string().min(1)).optional(),
 });
 
 export const zMlRunCreate = z.object({
@@ -41,6 +42,7 @@ export const zMlRunUpdate = z.object({
   tags: z.array(z.string().min(1)).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  keyMetrics: z.array(z.string().min(1)).optional(),
 });
 
 export const zMlMetricLog = z.object({

@@ -1,0 +1,2 @@
+ALTER TABLE "ml_projects"
+ADD COLUMN "runColumns" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

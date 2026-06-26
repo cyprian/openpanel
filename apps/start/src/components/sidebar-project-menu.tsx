@@ -9,7 +9,6 @@ import {
   ChevronDownIcon,
   CogIcon,
   GanttChartIcon,
-  GitCompareIcon,
   Globe2Icon,
   GridIcon,
   LayersIcon,
@@ -57,17 +56,7 @@ export default function SidebarProjectMenu({
         </div>
         <SidebarLink href={'/ml'} icon={NetworkIcon} label="ML Projects" />
         <SidebarLink href={'/ml/runs'} icon={ChartLineIcon} label="Runs" />
-        <SidebarLink
-          href={'/ml/compare'}
-          icon={GitCompareIcon}
-          label="Compare"
-        />
         <SidebarLink href={'/ml/docs'} icon={BookOpenIcon} label="Docs" />
-        <SidebarLink
-          href={'/dashboards'}
-          icon={LayoutPanelTopIcon}
-          label="Dashboards"
-        />
         <div className="mt-4 mb-2 font-medium text-muted-foreground text-sm">
           Manage
         </div>
