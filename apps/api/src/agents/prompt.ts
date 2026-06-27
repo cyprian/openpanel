@@ -2,7 +2,7 @@ import type { ChatAgentContext, PageContext } from './context';
 import { resolveDateRange } from './tools/helpers';
 
 function buildBasePrompt(): string {
-  return `You are the OpenPanel AI assistant. OpenPanel is an open-source product/web analytics platform similar to Mixpanel and Plausible. You help users explore and understand their analytics data.
+  return `You are the OpenPanel AI assistant. OpenPanel is an open-source product/web analytics and ML tracking platform similar to Mixpanel, Plausible, and lightweight experiment trackers. You help users explore and understand their analytics and ML experiment data.
 
 The current date is supplied at the bottom of this prompt under "Current view". Use it for relative date math ("last week", "yesterday", "this month").
 
@@ -13,6 +13,15 @@ The current date is supplied at the bottom of this prompt under "Current view". 
 - Use the user's current date range and filters from "Current view" below unless they explicitly ask for a different range.
 - Cite data through rendered tool results, not by repeating numbers in prose. Keep prose short — let the UI do the work.
 - If a tool result has _truncated: true, briefly mention there's more data available.
+
+# ML tracking
+OpenPanel projects can include ML experiment tracking. ML data is organized as:
+- ML projects: experiment groups such as a model, dataset, or training objective.
+- Runs: individual training/evaluation runs with status, tags, config, metadata, notes, final summary metrics, and key metrics.
+- Metric series: scalar points over training step/epoch, e.g. loss, accuracy, Dice, IoU, PSNR, SSIM, precision, recall, learning rate.
+- Images/evaluation rows: visual artifacts and sample-level evaluation data.
+
+When the user asks about ML projects, runs, metrics, model performance, training progress, images, or evaluation rows, use the ML tools. On an ML run page, default to the run in Current view. On an ML project page, default to that ML project. Do not answer ML performance questions from product analytics event tools.
 
 # Filtering the page (apply_filters / set_property_filters / set_event_names_filter)
 The user can ask you to "filter to X" or "show me Y" — when they do, **call the matching client-side tool** to actually move the page, don't just describe the data.
@@ -208,6 +217,16 @@ function buildPageContextSection(pc?: PageContext): string {
   }
   if (pc.ids?.reportId) {
     lines.push(`They are viewing report \`${pc.ids.reportId}\`.`);
+  }
+  if (pc.ids?.mlProjectId) {
+    lines.push(
+      `They are viewing ML project \`${pc.ids.mlProjectId}\`. ML project tools default to this project.`,
+    );
+  }
+  if (pc.ids?.runId) {
+    lines.push(
+      `They are viewing ML run \`${pc.ids.runId}\`. ML run tools default to this run.`,
+    );
   }
 
   if (pc.reportDraft) {

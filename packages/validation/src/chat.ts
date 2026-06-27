@@ -25,6 +25,11 @@ export const pageContextPageSchema = z.enum([
   'insights',
   'pages',
   'seo',
+  'mlProjects',
+  'mlProject',
+  'mlRuns',
+  'mlRun',
+  'mlCompare',
   'sessionDetail',
   'profileDetail',
   'reportEditor',
@@ -46,6 +51,8 @@ export const pageContextSchema = z.object({
       reportId: z.string().optional(),
       groupId: z.string().optional(),
       dashboardId: z.string().optional(),
+      mlProjectId: z.string().optional(),
+      runId: z.string().optional(),
     })
     .optional(),
   filters: z

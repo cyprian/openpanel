@@ -26,6 +26,7 @@ import {
   ChartTooltipItem,
 } from '@/components/charts/chart-tooltip';
 import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
+import { useMlPageContext } from '@/hooks/use-page-context-helpers';
 import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
 import {
   useMutation,
@@ -83,6 +84,20 @@ export function MlRunDetail({
   const navigate = useNavigate();
   const [selectedKeyMetrics, setSelectedKeyMetrics] = useState<string[]>([]);
   const run = useQuery(trpc.ml.run.queryOptions({ projectId, id: runId }));
+  const contextMlProjectId = run.data?.mlProjectId ?? fallbackMlProjectId;
+  useMlPageContext(
+    'mlRun',
+    {
+      runId,
+      ...(contextMlProjectId ? { mlProjectId: contextMlProjectId } : {}),
+    },
+    {
+      runName: run.data?.name,
+      runStatus: run.data?.status,
+      mlProjectName: run.data?.mlProject.name,
+      keyMetrics: run.data?.keyMetrics,
+    },
+  );
   const updateRun = useMutation(
     trpc.ml.updateRun.mutationOptions({
       onError: handleErrorToastOptions({}),
@@ -147,7 +162,7 @@ export function MlRunDetail({
   );
   const config = normalizeRecord(run.data?.config);
   const metadata = normalizeRecord(run.data?.metadata);
-  const mlProjectId = run.data?.mlProjectId ?? fallbackMlProjectId;
+  const mlProjectId = contextMlProjectId;
   const hasEvaluationRows = (evaluationSummary.data?.total ?? 0) > 0;
 
   useEffect(() => {

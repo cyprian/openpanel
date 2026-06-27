@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/table';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
+import { useMlPageContext } from '@/hooks/use-page-context-helpers';
 import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -54,6 +55,9 @@ function MlProjectsIndex() {
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const projects = useQuery(trpc.ml.projects.queryOptions({ projectId }));
+  useMlPageContext('mlProjects', undefined, {
+    visibleProjectCount: projects.data?.length ?? 0,
+  });
   const createProject = useMutation(
     trpc.ml.createProject.mutationOptions({
       onError: handleErrorToastOptions({}),

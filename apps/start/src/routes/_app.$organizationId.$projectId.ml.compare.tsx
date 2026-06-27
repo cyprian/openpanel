@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/tooltip';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
+import { useMlPageContext } from '@/hooks/use-page-context-helpers';
 import { X_AXIS_STYLE_PROPS } from '@/components/report-chart/common/axis';
 import { useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
@@ -89,6 +90,14 @@ function Component() {
   const runs = useQuery(trpc.ml.runs.queryOptions({ projectId, mlProjectId }));
   const metricNames = useQuery(
     trpc.ml.metricNames.queryOptions({ projectId, mlProjectId })
+  );
+  useMlPageContext(
+    'mlCompare',
+    mlProjectId ? { mlProjectId } : undefined,
+    {
+      visibleRunCount: runs.data?.length ?? 0,
+      metricCount: metricNames.data?.length ?? 0,
+    },
   );
   const [selectedRunIds, setSelectedRunIds] = useState<string[] | null>(null);
   const [metric, setMetric] = useState('');

@@ -91,6 +91,25 @@ export function useDashboardPageContext(
 }
 
 /**
+ * For ML tracking pages. Sends the active ML project/run IDs so the
+ * assistant can default ML tool calls to the entity the user is viewing.
+ */
+export function useMlPageContext(
+  page: 'mlProjects' | 'mlProject' | 'mlRuns' | 'mlRun' | 'mlCompare',
+  ids?: PageContext['ids'],
+  primer?: Record<string, unknown>,
+) {
+  const { projectId, organizationId } = useAppParams();
+
+  usePageContext({
+    page,
+    route: { projectId, organizationId },
+    ...(ids ? { ids } : {}),
+    ...(primer ? { primer } : {}),
+  });
+}
+
+/**
  * For the Report Editor page. Sends the full live report draft so the
  * model can propose concrete edits via `preview_report_with_changes`.
  */

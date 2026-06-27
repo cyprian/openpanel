@@ -5,6 +5,7 @@ import * as dashboard from './dashboard';
 import * as events from './events';
 import * as groups from './groups';
 import * as insights from './insights';
+import * as ml from './ml';
 import * as pages from './pages';
 import * as profile from './profile';
 import * as references from './references';
@@ -125,6 +126,18 @@ const DASHBOARD_TOOLS: ToolList = [
   dashboard.summarizeDashboard,
 ] as AgentToolDefinition[];
 
+const ML_TOOLS: ToolList = [
+  ml.listMlProjectsTool,
+  ml.getMlProjectTool,
+  ml.listMlRunsTool,
+  ml.getMlRunTool,
+  ml.listMlMetricNamesTool,
+  ml.getMlLatestMetricsTool,
+  ml.getMlMetricSeriesTool,
+  ml.listMlImagesTool,
+  ml.listMlEvaluationRowsTool,
+] as AgentToolDefinition[];
+
 // Client-side UI mutators. Available on pages that have user-
 // settable filters (date range, event names, property filters) so
 // the assistant can act on requests like "filter to last 7 days",
@@ -166,6 +179,12 @@ export function composeChatTools(context: ChatAgentContext) {
       return [...BASE_TOOLS, ...PAGES_TOOLS, ...UI_TOOLS];
     case 'seo':
       return [...BASE_TOOLS, ...SEO_TOOLS, ...UI_TOOLS];
+    case 'mlProjects':
+    case 'mlProject':
+    case 'mlRuns':
+    case 'mlRun':
+    case 'mlCompare':
+      return [...ML_TOOLS];
     case 'events':
       return [...BASE_TOOLS, ...EVENTS_TOOLS, ...UI_TOOLS];
     case 'insights':

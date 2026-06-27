@@ -1,7 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { NetworkIcon } from 'lucide-react';
 import { LazyComponent } from '@/components/lazy-component';
-import { useRangePageContext } from '@/hooks/use-page-context-helpers';
+import {
+  useMlPageContext,
+  useRangePageContext,
+} from '@/hooks/use-page-context-helpers';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -94,6 +97,10 @@ function AnalyticsProjectOverview({ projectId }: { projectId: string }) {
 }
 
 function MlProjectOverview({ projectName }: { projectName: string }) {
+  useMlPageContext('mlProjects', undefined, {
+    projectName,
+  });
+
   return (
     <PageContainer>
       <PageHeader

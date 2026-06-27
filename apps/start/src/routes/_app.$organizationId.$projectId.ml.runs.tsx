@@ -4,6 +4,7 @@ import { MlRunActions } from '@/components/ml/run-actions';
 import { MlStatusBadge } from '@/components/ml/status-badge';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
+import { useMlPageContext } from '@/hooks/use-page-context-helpers';
 import {
   Table,
   TableBody,
@@ -29,6 +30,9 @@ function Component() {
   const { organizationId, projectId } = Route.useParams();
   const trpc = useTRPC();
   const runs = useQuery(trpc.ml.runs.queryOptions({ projectId }));
+  useMlPageContext('mlRuns', undefined, {
+    visibleRunCount: runs.data?.length ?? 0,
+  });
 
   return (
     <PageContainer>

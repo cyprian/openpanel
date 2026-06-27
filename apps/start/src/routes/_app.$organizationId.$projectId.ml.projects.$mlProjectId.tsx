@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
+import { useMlPageContext } from '@/hooks/use-page-context-helpers';
 import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
 import { cn } from '@/utils/cn';
 import { createProjectTitle } from '@/utils/title';
@@ -93,6 +94,14 @@ function MlProjectRunsIndex() {
     trpc.ml.project.queryOptions({ projectId, id: mlProjectId })
   );
   const runs = useQuery(trpc.ml.runs.queryOptions({ projectId, mlProjectId }));
+  useMlPageContext(
+    'mlProject',
+    { mlProjectId },
+    {
+      mlProjectName: project.data?.name,
+      visibleRunCount: runs.data?.length ?? 0,
+    },
+  );
   const updateProject = useMutation(
     trpc.ml.updateProject.mutationOptions({
       onError: handleErrorToastOptions({}),
