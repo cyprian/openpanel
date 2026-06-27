@@ -2,12 +2,13 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 const STATUS_STYLES: Record<string, string> = {
-  created: 'border-slate-300 bg-slate-100 text-slate-700',
-  running: 'border-blue-200 bg-blue-100 text-blue-700',
-  finished: 'border-emerald-200 bg-emerald-100 text-emerald-700',
-  failed: 'border-red-200 bg-red-100 text-red-700',
-  crashed: 'border-red-200 bg-red-100 text-red-700',
-  archived: 'border-zinc-300 bg-zinc-100 text-zinc-600',
+  created: 'border-transparent bg-slate-600 text-white',
+  running: 'border-transparent bg-sky-500 text-white',
+  finished: 'border-transparent bg-emerald-600 text-white',
+  failed: 'border-transparent bg-rose-600 text-white',
+  error: 'border-transparent bg-rose-600 text-white',
+  crashed: 'border-transparent bg-fuchsia-600 text-white',
+  archived: 'border-transparent bg-zinc-700 text-white',
 };
 
 export function MlStatusBadge({
@@ -23,7 +24,7 @@ export function MlStatusBadge({
       className={cn(
         'capitalize',
         STATUS_STYLES[status.toLowerCase()] ??
-          'border-muted bg-muted text-muted-foreground',
+          'border-transparent bg-indigo-600 text-white',
         className
       )}
     >
