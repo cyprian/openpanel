@@ -23,7 +23,12 @@ import { useOrganizationAccess } from '@/hooks/use-organization-access';
 import { pushModal } from '@/modals';
 
 interface ProjectSelectorProps {
-  projects: Array<{ id: string; name: string; organizationId: string }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    organizationId: string;
+    types?: string[];
+  }>;
   organizations?: IServiceOrganization[];
   align?: 'start' | 'end';
 }
@@ -39,10 +44,14 @@ export default function ProjectSelector({
   const [open, setOpen] = useState(false);
 
   const changeProject = (newProjectId: string) => {
+    const project = projects.find((item) => item.id === newProjectId);
+    const isMlProject = project?.types?.includes('ml') ?? false;
+
     if (organizationId && projectId) {
-      // Navigate to the new project keeping the current path structure
       router.navigate({
-        to: '/$organizationId/$projectId',
+        to: isMlProject
+          ? '/$organizationId/$projectId/ml'
+          : '/$organizationId/$projectId',
         params: {
           organizationId,
           projectId: newProjectId,
@@ -50,7 +59,9 @@ export default function ProjectSelector({
       });
     } else {
       router.navigate({
-        to: '/$organizationId/$projectId',
+        to: isMlProject
+          ? '/$organizationId/$projectId/ml'
+          : '/$organizationId/$projectId',
         params: {
           organizationId: organizationId!,
           projectId: newProjectId,

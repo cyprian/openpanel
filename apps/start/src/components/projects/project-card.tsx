@@ -59,7 +59,11 @@ function ProjectCard({
   return (
     <ProjectCardRoot>
       <Link
-        to="/$organizationId/$projectId"
+        to={
+          isMlProject
+            ? '/$organizationId/$projectId/ml'
+            : '/$organizationId/$projectId'
+        }
         params={{
           organizationId,
           projectId: id,
