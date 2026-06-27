@@ -7,6 +7,18 @@ import { mlMetricBuffer } from '../buffers';
 
 export type MlRunSummary = Record<string, number>;
 
+type MlRunUpdateInput = {
+  id: string;
+  projectId: string;
+  name?: string;
+  status?: string;
+  notes?: string | null;
+  tags?: string[];
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  keyMetrics?: string[];
+};
+
 export const ML_IMAGE_STORAGE_PROVIDER_LOCAL = 'local';
 export const ML_IMAGE_STORAGE_ROOT =
   process.env.ML_STORAGE_DIR || '/var/lib/openpanel/ml';
@@ -249,6 +261,7 @@ export async function createMlRun(input: {
       tags: input.tags ?? [],
       config: input.config ?? {},
       metadata: input.metadata ?? {},
+      keyMetrics: input.keyMetrics ?? [],
       summary: {},
     },
     include: {
@@ -263,17 +276,19 @@ export async function createMlRun(input: {
   });
 }
 
-export async function updateMlRun(input: {
-  id: string;
-  projectId: string;
-  name?: string;
-  status?: string;
-  notes?: string | null;
-  tags?: string[];
-  config?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-  keyMetrics?: string[];
-}) {
+export function isKeyMetricsOnlyMlRunUpdate(input: MlRunUpdateInput) {
+  return (
+    input.keyMetrics !== undefined &&
+    input.name === undefined &&
+    input.status === undefined &&
+    input.notes === undefined &&
+    input.tags === undefined &&
+    input.config === undefined &&
+    input.metadata === undefined
+  );
+}
+
+export async function updateMlRun(input: MlRunUpdateInput) {
   const run = await getMlRunById(input);
   if (!run) {
     throw new Error('ML run not found');
@@ -300,6 +315,9 @@ export async function updateMlRun(input: {
       keyMetrics: input.keyMetrics,
       startedAt,
       endedAt,
+      updatedAt: isKeyMetricsOnlyMlRunUpdate(input)
+        ? run.updatedAt
+        : undefined,
     },
     include: {
       client: {
