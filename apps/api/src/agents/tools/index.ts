@@ -138,6 +138,8 @@ const ML_TOOLS: ToolList = [
   ml.listMlEvaluationRowsTool,
 ] as AgentToolDefinition[];
 
+const PROJECT_TOOLS: ToolList = [...BASE_TOOLS, ...ML_TOOLS];
+
 // Client-side UI mutators. Available on pages that have user-
 // settable filters (date range, event names, property filters) so
 // the assistant can act on requests like "filter to last 7 days",
@@ -167,18 +169,18 @@ export function composeChatTools(context: ChatAgentContext) {
   switch (page) {
     case 'profileDetail':
       return ids?.profileId
-        ? [...BASE_TOOLS, ...PROFILE_TOOLS, ...UI_TOOLS]
-        : [...BASE_TOOLS, ...UI_TOOLS];
+        ? [...PROJECT_TOOLS, ...PROFILE_TOOLS, ...UI_TOOLS]
+        : [...PROJECT_TOOLS, ...UI_TOOLS];
     case 'sessionDetail':
-      return ids?.sessionId ? [...BASE_TOOLS, ...SESSION_TOOLS] : BASE_TOOLS;
+      return ids?.sessionId ? [...PROJECT_TOOLS, ...SESSION_TOOLS] : PROJECT_TOOLS;
     case 'reportEditor':
       return context.pageContext?.reportDraft
-        ? [...BASE_TOOLS, ...REPORT_EDITOR_TOOLS]
-        : BASE_TOOLS;
+        ? [...PROJECT_TOOLS, ...REPORT_EDITOR_TOOLS]
+        : PROJECT_TOOLS;
     case 'pages':
-      return [...BASE_TOOLS, ...PAGES_TOOLS, ...UI_TOOLS];
+      return [...PROJECT_TOOLS, ...PAGES_TOOLS, ...UI_TOOLS];
     case 'seo':
-      return [...BASE_TOOLS, ...SEO_TOOLS, ...UI_TOOLS];
+      return [...PROJECT_TOOLS, ...SEO_TOOLS, ...UI_TOOLS];
     case 'mlProjects':
     case 'mlProject':
     case 'mlRuns':
@@ -186,18 +188,18 @@ export function composeChatTools(context: ChatAgentContext) {
     case 'mlCompare':
       return [...ML_TOOLS];
     case 'events':
-      return [...BASE_TOOLS, ...EVENTS_TOOLS, ...UI_TOOLS];
+      return [...PROJECT_TOOLS, ...EVENTS_TOOLS, ...UI_TOOLS];
     case 'insights':
-      return [...BASE_TOOLS, ...INSIGHTS_TOOLS, ...UI_TOOLS];
+      return [...PROJECT_TOOLS, ...INSIGHTS_TOOLS, ...UI_TOOLS];
     case 'groupDetail':
-      return ids?.groupId ? [...BASE_TOOLS, ...GROUP_TOOLS] : BASE_TOOLS;
+      return ids?.groupId ? [...PROJECT_TOOLS, ...GROUP_TOOLS] : PROJECT_TOOLS;
     case 'dashboard':
       return ids?.dashboardId
-        ? [...BASE_TOOLS, ...DASHBOARD_TOOLS, ...UI_TOOLS]
-        : [...BASE_TOOLS, ...UI_TOOLS];
+        ? [...PROJECT_TOOLS, ...DASHBOARD_TOOLS, ...UI_TOOLS]
+        : [...PROJECT_TOOLS, ...UI_TOOLS];
     case 'overview':
-      return [...BASE_TOOLS, ...UI_TOOLS];
+      return [...PROJECT_TOOLS, ...UI_TOOLS];
     default:
-      return BASE_TOOLS;
+      return PROJECT_TOOLS;
   }
 }

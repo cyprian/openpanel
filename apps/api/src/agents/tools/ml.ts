@@ -81,6 +81,50 @@ function getDefaultRunId(contextRunId?: string, inputRunId?: string) {
   return inputRunId || contextRunId;
 }
 
+function normalizeSearch(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+async function resolveMlProjectId(input: {
+  projectId: string;
+  contextMlProjectId?: string;
+  mlProjectId?: string;
+  mlProjectName?: string;
+}) {
+  const candidate = getDefaultMlProjectId(
+    input.contextMlProjectId,
+    input.mlProjectId,
+  );
+
+  if (candidate) {
+    const projectById = await getMlProjectById({
+      projectId: input.projectId,
+      id: candidate,
+    });
+    if (projectById) {
+      return projectById.id;
+    }
+  }
+
+  const name = input.mlProjectName ?? candidate;
+  if (!name) {
+    return undefined;
+  }
+
+  const normalizedName = normalizeSearch(name);
+  const projects = await listMlProjects(input.projectId);
+  const exact = projects.find(
+    (project) => normalizeSearch(project.name) === normalizedName,
+  );
+  if (exact) {
+    return exact.id;
+  }
+
+  return projects.find((project) =>
+    normalizeSearch(project.name).includes(normalizedName),
+  )?.id;
+}
+
 export const listMlProjectsTool = chatTool(
   {
     name: 'list_ml_projects',
@@ -108,16 +152,29 @@ export const getMlProjectTool = chatTool(
   {
     name: 'get_ml_project',
     description:
-      'Get one ML experiment project by ID. Defaults to the ML project currently being viewed when available.',
+      'Get one ML experiment project by ID or name. Defaults to the ML project currently being viewed when available.',
     schema: z.object({
-      mlProjectId: z.string().optional().describe('The ML project ID to look up'),
+      mlProjectId: z
+        .string()
+        .optional()
+        .describe('The ML project ID to look up. If the user gave a project name, prefer mlProjectName.'),
+      mlProjectName: z.string().optional().describe('The ML project name to look up'),
     }),
   },
-  async ({ mlProjectId }, context) => {
+  async ({ mlProjectId, mlProjectName }, context) => {
     await assertMlProject(context.projectId);
-    const id = getDefaultMlProjectId(context.pageContext?.ids?.mlProjectId, mlProjectId);
+    const id = await resolveMlProjectId({
+      projectId: context.projectId,
+      contextMlProjectId: context.pageContext?.ids?.mlProjectId,
+      mlProjectId,
+      mlProjectName,
+    });
     if (!id) {
-      return { error: 'No ML project ID provided or available in the current view' };
+      return {
+        error: 'No matching ML project found',
+        mlProjectId,
+        mlProjectName,
+      };
     }
 
     const project = await getMlProjectById({ projectId: context.projectId, id });
@@ -140,9 +197,13 @@ export const listMlRunsTool = chatTool(
   {
     name: 'list_ml_runs',
     description:
-      'List ML tracking runs. Optionally filter by ML project, status, or tag. Returns run summaries, configs, metadata, timestamps, and dashboard links.',
+      'List ML tracking runs. Optionally filter by ML project ID/name, status, or tag. Use this for questions like "latest run status for <ML project name>". Returns run summaries, configs, metadata, timestamps, and dashboard links.',
     schema: z.object({
-      mlProjectId: z.string().optional().describe('Filter runs to a specific ML project ID'),
+      mlProjectId: z
+        .string()
+        .optional()
+        .describe('Filter runs to a specific ML project ID. If the user supplied a name, prefer mlProjectName.'),
+      mlProjectName: z.string().optional().describe('Filter runs to a specific ML project name'),
       status: z.string().optional().describe('Filter by run status, e.g. running, finished, failed'),
       tag: z.string().optional().describe('Filter to runs containing this tag'),
       limit: z
@@ -155,12 +216,22 @@ export const listMlRunsTool = chatTool(
         .describe('Maximum number of runs to return'),
     }),
   },
-  async ({ mlProjectId, status, tag, limit }, context) => {
+  async ({ mlProjectId, mlProjectName, status, tag, limit }, context) => {
     await assertMlProject(context.projectId);
-    const projectId = getDefaultMlProjectId(
-      context.pageContext?.ids?.mlProjectId,
+    const projectId = await resolveMlProjectId({
+      projectId: context.projectId,
+      contextMlProjectId: context.pageContext?.ids?.mlProjectId,
       mlProjectId,
-    );
+      mlProjectName,
+    });
+    if ((mlProjectId || mlProjectName) && !projectId) {
+      return {
+        error: 'ML project not found',
+        mlProjectId,
+        mlProjectName,
+      };
+    }
+
     const runs = await listMlRuns({
       projectId: context.projectId,
       mlProjectId: projectId,
@@ -180,6 +251,7 @@ export const listMlRunsTool = chatTool(
         ),
       })),
       total_before_limit: runs.length,
+      ...(mlProjectName || mlProjectId ? { resolved_ml_project_id: projectId ?? null } : {}),
     };
   },
 );
@@ -223,21 +295,36 @@ export const listMlMetricNamesTool = chatTool(
       'List scalar metric names logged for ML runs. Use this before requesting metric series unless the user named an obvious metric from a run summary.',
     schema: z.object({
       mlProjectId: z.string().optional().describe('Optional ML project ID to list metrics for'),
+      mlProjectName: z.string().optional().describe('Optional ML project name to list metrics for'),
       runId: z.string().optional().describe('Optional run ID to list metrics for only that run'),
     }),
   },
-  async ({ mlProjectId, runId }, context) => {
+  async ({ mlProjectId, mlProjectName, runId }, context) => {
     await assertMlProject(context.projectId);
+    const resolvedMlProjectId = await resolveMlProjectId({
+      projectId: context.projectId,
+      contextMlProjectId: context.pageContext?.ids?.mlProjectId,
+      mlProjectId,
+      mlProjectName,
+    });
+    if ((mlProjectId || mlProjectName) && !resolvedMlProjectId) {
+      return {
+        error: 'ML project not found',
+        mlProjectId,
+        mlProjectName,
+      };
+    }
+
     const metrics = await getMlMetricNames({
       projectId: context.projectId,
-      mlProjectId: getDefaultMlProjectId(
-        context.pageContext?.ids?.mlProjectId,
-        mlProjectId,
-      ),
+      mlProjectId: resolvedMlProjectId,
       runId: getDefaultRunId(context.pageContext?.ids?.runId, runId),
     });
     return {
       metrics: metrics.map((item) => item.metric),
+      ...(mlProjectName || mlProjectId
+        ? { resolved_ml_project_id: resolvedMlProjectId ?? null }
+        : {}),
     };
   },
 );
