@@ -1,6 +1,19 @@
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MlStatusBadge } from '@/components/ml/status-badge';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   ChartTooltipContainer,
   ChartTooltipHeader,
@@ -26,8 +39,8 @@ import { useTRPC } from '@/integrations/trpc/react';
 import { createProjectTitle } from '@/utils/title';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
-import { ArrowRightIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ArrowRightIcon, SettingsIcon } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CartesianGrid,
   Line,
@@ -67,6 +80,8 @@ const COLORS = [
   '#0d9488',
 ];
 
+const DEFAULT_METRIC_STORAGE_PREFIX = 'openpanel.ml.compare.defaultMetric';
+
 function Component() {
   const { organizationId, projectId } = Route.useParams();
   const { mlProjectId } = Route.useSearch();
@@ -77,7 +92,18 @@ function Component() {
   );
   const [selectedRunIds, setSelectedRunIds] = useState<string[] | null>(null);
   const [metric, setMetric] = useState('');
-  const selectedMetric = metric || metricNames.data?.[0]?.metric || '';
+  const [defaultMetric, setDefaultMetric] = useState('');
+  const metricOptions = metricNames.data ?? [];
+  const availableMetricNames = metricOptions.map((item) => item.metric);
+  const defaultMetricStorageKey = getDefaultMetricStorageKey(
+    projectId,
+    mlProjectId
+  );
+  const availableDefaultMetric = availableMetricNames.includes(defaultMetric)
+    ? defaultMetric
+    : '';
+  const selectedMetric =
+    metric || availableDefaultMetric || availableMetricNames[0] || '';
   const availableRuns = runs.data ?? [];
   const availableRunIds = availableRuns.map((run) => run.id);
   const selectedRunIdSet = new Set(selectedRunIds ?? availableRunIds);
@@ -109,13 +135,18 @@ function Component() {
   const metricKeys = getUniqueKeys(
     selectedRuns.map((run) => normalizeNumberRecord(run.summary))
   );
-  const selectedMetricValues = selectedRuns.map((run) =>
-    normalizeNumberRecord(run.summary)
-  );
-  const bestRunId = selectedMetric
-    ? getBestRunId(selectedMetric, selectedMetricValues, selectedRuns)
-    : null;
-  const bestRun = selectedRuns.find((run) => run.id === bestRunId);
+
+  useEffect(() => {
+    const storedMetric = getStoredDefaultMetric(defaultMetricStorageKey);
+    setDefaultMetric(storedMetric);
+    setMetric(storedMetric);
+  }, [defaultMetricStorageKey]);
+
+  const updateDefaultMetric = (nextMetric: string) => {
+    setDefaultMetric(nextMetric);
+    setMetric(nextMetric);
+    storeDefaultMetric(defaultMetricStorageKey, nextMetric);
+  };
 
   return (
     <PageContainer>
@@ -126,6 +157,48 @@ function Component() {
             : 'Compare Runs'
         }
         description="Overlay training metrics and compare final values."
+        actions={
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                disabled={availableMetricNames.length === 0}
+                icon={SettingsIcon}
+                variant="outline"
+              >
+                Settings
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80">
+              <div className="col gap-2">
+                <label
+                  className="font-medium text-sm"
+                  htmlFor="compare-default-metric"
+                >
+                  Default overlay metric
+                </label>
+                <Select
+                  disabled={availableMetricNames.length === 0}
+                  onValueChange={updateDefaultMetric}
+                  value={availableDefaultMetric}
+                >
+                  <SelectTrigger
+                    className="w-full"
+                    id="compare-default-metric"
+                  >
+                    <SelectValue placeholder="Select metric" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableMetricNames.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {item}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </PopoverContent>
+          </Popover>
+        }
         className="mb-8"
       />
       <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
@@ -197,18 +270,13 @@ function Component() {
         <section className="rounded-md border bg-card p-4">
           <div className="mb-4 row gap-2">
             <div className="font-medium">Metric overlay</div>
-            {bestRun && (
-              <Badge className="ml-2" variant="success">
-                Best final: {bestRun.name}
-              </Badge>
-            )}
             <select
               className="ml-auto rounded-md border bg-background px-2 py-1 text-sm"
               value={selectedMetric}
               onChange={(event) => setMetric(event.target.value)}
-              disabled={(metricNames.data ?? []).length === 0}
+              disabled={availableMetricNames.length === 0}
             >
-              {(metricNames.data ?? []).map((item) => (
+              {metricOptions.map((item) => (
                 <option key={item.metric} value={item.metric}>
                   {item.metric}
                 </option>
@@ -596,6 +664,38 @@ function getBestRunId(
 
 function getRunColor(index: number) {
   return COLORS[index % COLORS.length];
+}
+
+function getDefaultMetricStorageKey(projectId: string, mlProjectId?: string) {
+  return [
+    DEFAULT_METRIC_STORAGE_PREFIX,
+    projectId,
+    mlProjectId ?? 'all-projects',
+  ].join(':');
+}
+
+function getStoredDefaultMetric(storageKey: string) {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  try {
+    return window.localStorage.getItem(storageKey) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function storeDefaultMetric(storageKey: string, metric: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(storageKey, metric);
+  } catch {
+    return;
+  }
 }
 
 function getSingleMlProjectName(

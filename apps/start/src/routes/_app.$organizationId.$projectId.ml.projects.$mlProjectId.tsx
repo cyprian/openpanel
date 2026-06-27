@@ -19,9 +19,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
+import { cn } from '@/utils/cn';
 import { createProjectTitle } from '@/utils/title';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -31,15 +33,31 @@ import {
   useMatchRoute,
 } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
-import { ArrowRightIcon, CogIcon, GitCompareIcon } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowRightIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ChevronsUpDownIcon,
+  CogIcon,
+  GitCompareIcon,
+  SearchIcon,
+} from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 const RUN_COLUMN_API_SOURCE = 'apiSource';
 const RUN_COLUMN_TAGS = 'tags';
+const RUN_COLUMN_NAME = 'name';
+const RUN_COLUMN_STATUS = 'status';
+const RUN_COLUMN_UPDATED_AT = 'updatedAt';
 const STANDARD_RUN_COLUMNS = [
   { id: RUN_COLUMN_API_SOURCE, label: 'API source' },
   { id: RUN_COLUMN_TAGS, label: 'Tags' },
 ] as const;
+type RunSortDirection = 'asc' | 'desc';
+type RunSort = {
+  columnId: string;
+  direction: RunSortDirection;
+};
 
 export const Route = createFileRoute(
   '/_app/$organizationId/$projectId/ml/projects/$mlProjectId',
@@ -70,6 +88,7 @@ function MlProjectRunsIndex() {
   const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedRunColumns, setSelectedRunColumns] = useState<string[]>([]);
+  const [runSort, setRunSort] = useState<RunSort | null>(null);
   const project = useQuery(
     trpc.ml.project.queryOptions({ projectId, id: mlProjectId })
   );
@@ -94,6 +113,33 @@ function MlProjectRunsIndex() {
     RUN_COLUMN_API_SOURCE
   );
   const showTagsColumn = selectedRunColumns.includes(RUN_COLUMN_TAGS);
+  const sortedRuns = useMemo(() => {
+    const data = runs.data ?? [];
+
+    if (!runSort) {
+      return data;
+    }
+
+    return data
+      .map((run, index) => ({ index, run }))
+      .sort((a, b) => {
+        const comparison = compareSortValues(
+          getRunSortValue(a.run, runSort.columnId),
+          getRunSortValue(b.run, runSort.columnId),
+          runSort.direction
+        );
+
+        return comparison || a.index - b.index;
+      })
+      .map(({ run }) => run);
+  }, [runs.data, runSort]);
+
+  const handleSort = (columnId: string) => {
+    setRunSort((current) => ({
+      columnId,
+      direction: getNextSortDirection(current, columnId),
+    }));
+  };
 
   useEffect(() => {
     setSelectedRunColumns(normalizeSavedRunColumns(project.data?.runColumns));
@@ -146,21 +192,61 @@ function MlProjectRunsIndex() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Run</TableHead>
-              {showApiSourceColumn && <TableHead>API source</TableHead>}
-              <TableHead>Status</TableHead>
-              {showTagsColumn && <TableHead>Tags</TableHead>}
+              <SortableRunTableHead
+                columnId={RUN_COLUMN_NAME}
+                onSort={handleSort}
+                sort={runSort}
+              >
+                Run
+              </SortableRunTableHead>
+              {showApiSourceColumn && (
+                <SortableRunTableHead
+                  columnId={RUN_COLUMN_API_SOURCE}
+                  onSort={handleSort}
+                  sort={runSort}
+                >
+                  API source
+                </SortableRunTableHead>
+              )}
+              <SortableRunTableHead
+                columnId={RUN_COLUMN_STATUS}
+                onSort={handleSort}
+                sort={runSort}
+              >
+                Status
+              </SortableRunTableHead>
+              {showTagsColumn && (
+                <SortableRunTableHead
+                  columnId={RUN_COLUMN_TAGS}
+                  onSort={handleSort}
+                  sort={runSort}
+                >
+                  Tags
+                </SortableRunTableHead>
+              )}
               {visibleMetricColumns.map((metric) => (
-                <TableHead className="text-right" key={metric}>
+                <SortableRunTableHead
+                  align="right"
+                  columnId={getMetricColumnId(metric)}
+                  key={metric}
+                  onSort={handleSort}
+                  sort={runSort}
+                >
                   {metric}
-                </TableHead>
+                </SortableRunTableHead>
               ))}
-              <TableHead>Updated</TableHead>
+              <SortableRunTableHead
+                columnId={RUN_COLUMN_UPDATED_AT}
+                onSort={handleSort}
+                sort={runSort}
+              >
+                Updated
+              </SortableRunTableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {(runs.data ?? []).map((run) => (
+            {sortedRuns.map((run) => (
               <TableRow key={run.id}>
                 <TableCell>
                   <Link
@@ -250,6 +336,19 @@ function RunColumnSettingsDialog({
   open: boolean;
   selectedRunColumns: string[];
 }) {
+  const [metricSearch, setMetricSearch] = useState('');
+  const filteredMetricColumns = useMemo(() => {
+    const search = metricSearch.trim().toLocaleLowerCase();
+
+    if (!search) {
+      return availableMetricColumns;
+    }
+
+    return availableMetricColumns.filter((metric) =>
+      metric.toLocaleLowerCase().includes(search)
+    );
+  }, [availableMetricColumns, metricSearch]);
+
   const toggleColumn = (columnId: string, isChecked: boolean) => {
     onSelectedRunColumnsChange(
       isChecked
@@ -290,22 +389,40 @@ function RunColumnSettingsDialog({
                 No final metrics are available yet.
               </div>
             ) : (
-              <div className="grid max-h-[40vh] gap-2 overflow-auto pr-1">
-                {availableMetricColumns.map((metric) => {
-                  const columnId = getMetricColumnId(metric);
-                  const checked = selectedRunColumns.includes(columnId);
+              <div className="space-y-2">
+                <div className="relative">
+                  <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 size-4 text-muted-foreground" />
+                  <Input
+                    aria-label="Search final metrics"
+                    className="pl-9"
+                    onChange={(event) => setMetricSearch(event.target.value)}
+                    placeholder="Search metrics"
+                    value={metricSearch}
+                  />
+                </div>
+                {filteredMetricColumns.length === 0 ? (
+                  <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
+                    No metrics found.
+                  </div>
+                ) : (
+                  <div className="grid max-h-[40vh] gap-2 overflow-auto pr-1">
+                    {filteredMetricColumns.map((metric) => {
+                      const columnId = getMetricColumnId(metric);
+                      const checked = selectedRunColumns.includes(columnId);
 
-                  return (
-                    <RunColumnCheckbox
-                      checked={checked}
-                      key={metric}
-                      label={metric}
-                      onCheckedChange={(isChecked) =>
-                        toggleColumn(columnId, isChecked)
-                      }
-                    />
-                  );
-                })}
+                      return (
+                        <RunColumnCheckbox
+                          checked={checked}
+                          key={metric}
+                          label={metric}
+                          onCheckedChange={(isChecked) =>
+                            toggleColumn(columnId, isChecked)
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -313,6 +430,68 @@ function RunColumnSettingsDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function SortableRunTableHead({
+  align = 'left',
+  children,
+  columnId,
+  onSort,
+  sort,
+}: {
+  align?: 'left' | 'right';
+  children: ReactNode;
+  columnId: string;
+  onSort: (columnId: string) => void;
+  sort: RunSort | null;
+}) {
+  const isSorted = sort?.columnId === columnId;
+  const SortIcon = getSortIcon(sort, columnId);
+
+  return (
+    <TableHead
+      aria-sort={getAriaSortValue(sort, columnId)}
+      className={cn(align === 'right' && 'text-right')}
+    >
+      <button
+        className={cn(
+          'inline-flex max-w-full items-center gap-1 rounded-sm transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+          align === 'right' && 'ml-auto justify-end'
+        )}
+        onClick={() => onSort(columnId)}
+        type="button"
+      >
+        <span className="truncate">{children}</span>
+        <SortIcon
+          className={cn('size-3.5 shrink-0', !isSorted && 'opacity-35')}
+        />
+      </button>
+    </TableHead>
+  );
+}
+
+function getNextSortDirection(current: RunSort | null, columnId: string) {
+  if (current?.columnId === columnId && current.direction === 'asc') {
+    return 'desc';
+  }
+
+  return 'asc';
+}
+
+function getSortIcon(sort: RunSort | null, columnId: string) {
+  if (sort?.columnId !== columnId) {
+    return ChevronsUpDownIcon;
+  }
+
+  return sort.direction === 'asc' ? ChevronUpIcon : ChevronDownIcon;
+}
+
+function getAriaSortValue(sort: RunSort | null, columnId: string) {
+  if (sort?.columnId !== columnId) {
+    return 'none';
+  }
+
+  return sort.direction === 'asc' ? 'ascending' : 'descending';
 }
 
 function RunColumnCheckbox({
@@ -348,6 +527,79 @@ function getAvailableMetricColumns(runs: Array<{ summary: unknown }>) {
 
 function getMetricColumnId(metric: string) {
   return `metric:${metric}`;
+}
+
+function getMetricNameFromColumnId(columnId: string) {
+  return columnId.slice('metric:'.length);
+}
+
+function getRunSortValue(
+  run: {
+    client?: { name?: string | null } | null;
+    name: string;
+    status: string;
+    summary: unknown;
+    tags: string[];
+    updatedAt: Date | string | number;
+  },
+  columnId: string
+) {
+  if (columnId.startsWith('metric:')) {
+    return normalizeNumberRecord(run.summary)[getMetricNameFromColumnId(
+      columnId
+    )];
+  }
+
+  if (columnId === RUN_COLUMN_API_SOURCE) {
+    return run.client?.name ?? null;
+  }
+
+  if (columnId === RUN_COLUMN_NAME) {
+    return run.name;
+  }
+
+  if (columnId === RUN_COLUMN_STATUS) {
+    return run.status;
+  }
+
+  if (columnId === RUN_COLUMN_TAGS) {
+    return run.tags.join(' ');
+  }
+
+  if (columnId === RUN_COLUMN_UPDATED_AT) {
+    const timestamp = new Date(run.updatedAt).getTime();
+    return Number.isNaN(timestamp) ? null : timestamp;
+  }
+
+  return null;
+}
+
+function compareSortValues(
+  a: number | string | null | undefined,
+  b: number | string | null | undefined,
+  direction: RunSortDirection
+) {
+  if (a == null && b == null) {
+    return 0;
+  }
+
+  if (a == null) {
+    return 1;
+  }
+
+  if (b == null) {
+    return -1;
+  }
+
+  const comparison =
+    typeof a === 'number' && typeof b === 'number'
+      ? a - b
+      : String(a).localeCompare(String(b), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+
+  return direction === 'asc' ? comparison : -comparison;
 }
 
 function normalizeSavedRunColumns(columns: string[] | undefined) {
