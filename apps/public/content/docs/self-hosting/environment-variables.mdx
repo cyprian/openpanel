@@ -491,7 +491,7 @@ If `SMTP_HOST` is set and an SMTP send attempt fails, the system will **not** au
 **Required**: No  
 **Default**: None
 
-Slack OAuth client ID for Slack integration.
+Slack OAuth client ID for Slack integration. Required only when Slack integrations are enabled.
 
 **Example**:
 ```bash
@@ -504,7 +504,7 @@ SLACK_CLIENT_ID=1234567890.1234567890
 **Required**: No  
 **Default**: None
 
-Slack OAuth client secret for Slack integration.
+Slack OAuth client secret for Slack integration. Required only when Slack integrations are enabled.
 
 **Example**:
 ```bash
@@ -521,7 +521,7 @@ Slack OAuth redirect URL. Must match the redirect URI configured in your Slack a
 
 **Example**:
 ```bash
-SLACK_OAUTH_REDIRECT_URL=https://analytics.example.com/api/integrations/slack/callback
+SLACK_OAUTH_REDIRECT_URL=https://analytics.example.com/api/webhook/slack
 ```
 
 ### SLACK_STATE_SECRET
@@ -530,7 +530,7 @@ SLACK_OAUTH_REDIRECT_URL=https://analytics.example.com/api/integrations/slack/ca
 **Required**: No  
 **Default**: None
 
-Secret for signing Slack OAuth state parameter.
+Secret for signing Slack OAuth state parameter. Required only when Slack integrations are enabled.
 
 **Example**:
 ```bash
@@ -1155,4 +1155,3 @@ For a basic self-hosted installation, these variables are required:
 - [Deploy with Coolify](/docs/self-hosting/deploy-coolify)
 - [Deploy with Dokploy](/docs/self-hosting/deploy-dokploy)
 - [Deploy on Kubernetes](/docs/self-hosting/deploy-kubernetes)
-

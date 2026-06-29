@@ -9,7 +9,17 @@ const SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET;
 const SLACK_OAUTH_REDIRECT_URL = process.env.SLACK_OAUTH_REDIRECT_URL;
 const SLACK_STATE_SECRET = process.env.SLACK_STATE_SECRET;
 
-export const slackInstaller = SLACK_CLIENT_ID
+const SLACK_ENV_VARS = [
+  ['SLACK_CLIENT_ID', SLACK_CLIENT_ID],
+  ['SLACK_CLIENT_SECRET', SLACK_CLIENT_SECRET],
+  ['SLACK_OAUTH_REDIRECT_URL', SLACK_OAUTH_REDIRECT_URL],
+  ['SLACK_STATE_SECRET', SLACK_STATE_SECRET],
+] as const;
+
+export const getMissingSlackEnvVars = () =>
+  SLACK_ENV_VARS.filter(([, value]) => !value).map(([name]) => name);
+
+export const slackInstaller = getMissingSlackEnvVars().length === 0
   ? new InstallProvider({
       clientId: SLACK_CLIENT_ID!,
       clientSecret: SLACK_CLIENT_SECRET!,
@@ -26,9 +36,14 @@ export const getSlackInstallUrl = ({
   integrationId,
   organizationId,
 }: { integrationId: string; organizationId: string }) => {
-  if (!SLACK_CLIENT_ID) {
-    throw new Error('SLACK_CLIENT_ID is not set (slack.ts)');
+  const missingEnvVars = getMissingSlackEnvVars();
+  if (missingEnvVars.length > 0) {
+    const missingEnvVarNames = missingEnvVars.join(', ');
+    throw new Error(
+      `Slack integration is not configured. Missing ${missingEnvVarNames}.`,
+    );
   }
+
   return slackInstaller.generateInstallUrl({
     scopes: [
       'incoming-webhook',

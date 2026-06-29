@@ -36,7 +36,12 @@ export function SlackIntegrationForm({
         window.location.href = res.slackInstallUrl;
         onSuccess();
       },
-      onError() {
+      onError(error) {
+        if (error.data?.code === 'BAD_REQUEST') {
+          toast.error(error.message);
+          return;
+        }
+
         toast.error('Failed to create integration');
       },
     }),

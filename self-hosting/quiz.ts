@@ -14,6 +14,10 @@ let envs = {
   PACKAGE_REGISTRY_TOKEN: generatePassword(48),
   RESEND_API_KEY: '',
   EMAIL_SENDER: '',
+  SLACK_CLIENT_ID: '',
+  SLACK_CLIENT_SECRET: '',
+  SLACK_OAUTH_REDIRECT_URL: '',
+  SLACK_STATE_SECRET: '',
 };
 
 type EnvVars = typeof envs;
@@ -154,7 +158,11 @@ function writeEnvFile(envs: EnvVars) {
     .replace('$API_URL', `${stripTrailingSlash(envs.DOMAIN_NAME)}/api`)
     .replace('$PACKAGE_REGISTRY_TOKEN', envs.PACKAGE_REGISTRY_TOKEN)
     .replace('$RESEND_API_KEY', envs.RESEND_API_KEY)
-    .replace('$EMAIL_SENDER', envs.EMAIL_SENDER);
+    .replace('$EMAIL_SENDER', envs.EMAIL_SENDER)
+    .replace('$SLACK_CLIENT_ID', envs.SLACK_CLIENT_ID)
+    .replace('$SLACK_CLIENT_SECRET', envs.SLACK_CLIENT_SECRET)
+    .replace('$SLACK_OAUTH_REDIRECT_URL', envs.SLACK_OAUTH_REDIRECT_URL)
+    .replace('$SLACK_STATE_SECRET', envs.SLACK_STATE_SECRET);
 
   fs.writeFileSync(
     envPath,
@@ -387,6 +395,10 @@ async function initiateOnboarding() {
     PACKAGE_REGISTRY_TOKEN: envs.PACKAGE_REGISTRY_TOKEN,
     RESEND_API_KEY: envs.RESEND_API_KEY || '',
     EMAIL_SENDER: envs.EMAIL_SENDER || '',
+    SLACK_CLIENT_ID: envs.SLACK_CLIENT_ID || '',
+    SLACK_CLIENT_SECRET: envs.SLACK_CLIENT_SECRET || '',
+    SLACK_OAUTH_REDIRECT_URL: envs.SLACK_OAUTH_REDIRECT_URL || '',
+    SLACK_STATE_SECRET: envs.SLACK_STATE_SECRET || '',
   });
 
   console.log('Updating docker-compose.yml file...\n');

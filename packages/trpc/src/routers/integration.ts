@@ -2,7 +2,10 @@ import { z } from 'zod';
 
 import { BASE_INTEGRATIONS, db } from '@openpanel/db';
 
-import { getSlackInstallUrl } from '@openpanel/integrations/src/slack';
+import {
+  getMissingSlackEnvVars,
+  getSlackInstallUrl,
+} from '@openpanel/integrations/src/slack';
 import {
   type ISlackConfig,
   zCreateDiscordIntegration,
@@ -52,6 +55,14 @@ export const integrationRouter = createTRPCRouter({
   createOrUpdateSlack: protectedProcedure
     .input(zCreateSlackIntegration)
     .mutation(async ({ input }) => {
+      const missingSlackEnvVars = getMissingSlackEnvVars();
+      if (missingSlackEnvVars.length > 0) {
+        const missingSlackEnvVarNames = missingSlackEnvVars.join(', ');
+        throw new TRPCBadRequestError(
+          `Slack integration is not configured. Missing ${missingSlackEnvVarNames}.`,
+        );
+      }
+
       if (input.id) {
         const res = await db.integration.update({
           where: {
