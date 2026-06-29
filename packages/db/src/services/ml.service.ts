@@ -960,11 +960,11 @@ export async function listMlEvaluationRows(input: {
   };
 }
 
-export async function listMlEvaluationIterations(input: {
+export async function listMlEvaluationSteps(input: {
   projectId: string;
   runId: string;
 }) {
-  const iterations = await db.mlEvaluationRow.groupBy({
+  const steps = await db.mlEvaluationRow.groupBy({
     by: ['step'],
     where: {
       projectId: input.projectId,
@@ -981,15 +981,15 @@ export async function listMlEvaluationIterations(input: {
     },
   });
 
-  return iterations.flatMap((iteration) => {
-    if (iteration.step === null) {
+  return steps.flatMap((step) => {
+    if (step.step === null) {
       return [];
     }
 
     return [
       {
-        step: iteration.step,
-        count: iteration._count._all,
+        step: step.step,
+        count: step._count._all,
       },
     ];
   });

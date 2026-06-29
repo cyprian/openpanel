@@ -8,8 +8,8 @@ import {
   getMlMetricSeries,
   getMlProjectById,
   getMlRunById,
-  listMlEvaluationIterations,
   listMlEvaluationRows,
+  listMlEvaluationSteps,
   listMlImagesWithData,
   listMlProjects,
   listMlRuns,
@@ -162,12 +162,12 @@ export const mlRouter = createTRPCRouter({
     )
     .query(({ input }) => listMlEvaluationRows(input)),
 
-  evaluationIterations: protectedProcedure
+  evaluationSteps: protectedProcedure
     .input(
       z.object({
         projectId: z.string(),
         runId: z.string(),
       })
     )
-    .query(({ input }) => listMlEvaluationIterations(input)),
+    .query(({ input }) => listMlEvaluationSteps(input)),
 });

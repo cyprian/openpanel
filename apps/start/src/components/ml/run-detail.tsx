@@ -135,7 +135,7 @@ export function MlRunDetail({
   const [evaluationSortDirection, setEvaluationSortDirection] = useState<
     'asc' | 'desc'
   >('desc');
-  const [selectedEvaluationIteration, setSelectedEvaluationIteration] =
+  const [selectedEvaluationStep, setSelectedEvaluationStep] =
     useState<number | null>(null);
   const metricItems = metricNames.data ?? [];
   const metricSeriesQueries = useQueries({
@@ -156,26 +156,25 @@ export function MlRunDetail({
     }),
     enabled: !!run.data,
   });
-  const evaluationIterations = useQuery({
-    ...trpc.ml.evaluationIterations.queryOptions({ projectId, runId }),
+  const evaluationSteps = useQuery({
+    ...trpc.ml.evaluationSteps.queryOptions({ projectId, runId }),
     enabled: !!run.data,
   });
-  const evaluationIterationOptions = evaluationIterations.data ?? [];
-  const latestEvaluationIteration = evaluationIterationOptions[0]?.step;
-  const effectiveEvaluationIteration =
-    selectedEvaluationIteration ?? latestEvaluationIteration;
+  const evaluationStepOptions = evaluationSteps.data ?? [];
+  const latestEvaluationStep = evaluationStepOptions[0]?.step;
+  const effectiveEvaluationStep = selectedEvaluationStep ?? latestEvaluationStep;
   const evaluationRows = useQuery({
     ...trpc.ml.evaluationRows.queryOptions({
       projectId,
       runId,
-      step: effectiveEvaluationIteration,
+      step: effectiveEvaluationStep,
       search: evaluationSearch || undefined,
       page: evaluationPage,
       pageSize: 10,
       sortBy: evaluationSortBy,
       sortDirection: evaluationSortDirection,
     }),
-    enabled: !!run.data && evaluationIterations.isFetched,
+    enabled: !!run.data && evaluationSteps.isFetched,
   });
   const summary = normalizeNumberRecord(run.data?.summary);
   const visibleSummary = filterZeroMetrics(summary, showZeroMetricValues);
@@ -258,7 +257,7 @@ export function MlRunDetail({
     setShowOtherMetricCharts(false);
     setShowZeroMetricCharts(false);
     setShowZeroMetricValues(false);
-    setSelectedEvaluationIteration(null);
+    setSelectedEvaluationStep(null);
     setEvaluationPage(1);
   }, [runId]);
 
@@ -267,18 +266,18 @@ export function MlRunDetail({
   }, [selectedKeyMetricsKey]);
 
   useEffect(() => {
-    if (selectedEvaluationIteration === null) {
+    if (selectedEvaluationStep === null) {
       return;
     }
 
-    const hasSelectedIteration = evaluationIterationOptions.some(
-      (iteration) => iteration.step === selectedEvaluationIteration
+    const hasSelectedStep = evaluationStepOptions.some(
+      (step) => step.step === selectedEvaluationStep
     );
-    if (!hasSelectedIteration) {
-      setSelectedEvaluationIteration(null);
+    if (!hasSelectedStep) {
+      setSelectedEvaluationStep(null);
       setEvaluationPage(1);
     }
-  }, [evaluationIterationOptions, selectedEvaluationIteration]);
+  }, [evaluationStepOptions, selectedEvaluationStep]);
 
   useEffect(() => {
     if (!pendingScrollMetric) {
@@ -541,11 +540,10 @@ export function MlRunDetail({
         <EvaluationTable
           data={evaluationRows.data}
           isLoading={evaluationRows.isLoading}
-          isLoadingIterations={evaluationIterations.isLoading}
-          iterationOptions={evaluationIterationOptions}
+          isLoadingSteps={evaluationSteps.isLoading}
           onPageChange={setEvaluationPage}
-          onIterationChange={(value) => {
-            setSelectedEvaluationIteration(value);
+          onStepChange={(value) => {
+            setSelectedEvaluationStep(value);
             setEvaluationPage(1);
           }}
           onSearchChange={(value) => {
@@ -562,9 +560,10 @@ export function MlRunDetail({
           }}
           page={evaluationPage}
           search={evaluationSearch}
-          selectedIteration={effectiveEvaluationIteration}
+          selectedStep={effectiveEvaluationStep}
           sortBy={evaluationSortBy}
           sortDirection={evaluationSortDirection}
+          stepOptions={evaluationStepOptions}
         />
       )}
     </PageContainer>
@@ -603,7 +602,7 @@ type MlEvaluationRowsData = {
   totalPages: number;
 };
 
-type MlEvaluationIteration = {
+type MlEvaluationStep = {
   step: number;
   count: number;
 };
@@ -850,33 +849,33 @@ function MetricChartsSection({
 function EvaluationTable({
   data,
   isLoading,
-  isLoadingIterations,
-  iterationOptions,
+  isLoadingSteps,
   search,
   page,
-  selectedIteration,
+  selectedStep,
   sortBy,
   sortDirection,
-  onIterationChange,
+  onStepChange,
   onSearchChange,
   onPageChange,
   onSortByChange,
   onSortDirectionChange,
+  stepOptions,
 }: {
   data?: MlEvaluationRowsData;
   isLoading: boolean;
-  isLoadingIterations: boolean;
-  iterationOptions: MlEvaluationIteration[];
+  isLoadingSteps: boolean;
   search: string;
   page: number;
-  selectedIteration?: number;
+  selectedStep?: number;
   sortBy: string;
   sortDirection: 'asc' | 'desc';
-  onIterationChange: (value: number | null) => void;
+  onStepChange: (value: number | null) => void;
   onSearchChange: (value: string) => void;
   onPageChange: (value: number) => void;
   onSortByChange: (value: string) => void;
   onSortDirectionChange: (value: 'asc' | 'desc') => void;
+  stepOptions: MlEvaluationStep[];
 }) {
   const metricKeys = data?.metricKeys ?? [];
   const rows = useMemo(() => {
@@ -899,7 +898,7 @@ function EvaluationTable({
     [rows]
   );
   const totalPages = data?.totalPages ?? 1;
-  const hasIterationOptions = iterationOptions.length > 0;
+  const hasStepOptions = stepOptions.length > 0;
 
   return (
     <section className="mt-4 rounded-md border bg-card p-4">
@@ -908,34 +907,27 @@ function EvaluationTable({
           <div className="font-medium">Evaluation table</div>
           <div className="text-muted-foreground text-xs">
             {data?.total ?? 0} samples
-            {selectedIteration !== undefined
-              ? ` in iteration ${selectedIteration}`
-              : ''}
+            {selectedStep !== undefined ? ` in step ${selectedStep}` : ''}
           </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Select
-            disabled={isLoadingIterations || !hasIterationOptions}
-            onValueChange={(value) =>
-              onIterationChange(value ? Number(value) : null)
-            }
-            value={selectedIteration?.toString() ?? ''}
+            disabled={isLoadingSteps || !hasStepOptions}
+            onValueChange={(value) => onStepChange(value ? Number(value) : null)}
+            value={selectedStep?.toString() ?? ''}
           >
-            <SelectTrigger aria-label="Iteration" className="w-40">
-              <SelectValue placeholder="Iteration" />
+            <SelectTrigger aria-label="Step" className="w-40">
+              <SelectValue placeholder="Step" />
             </SelectTrigger>
             <SelectContent>
-              {iterationOptions.map((iteration) => (
+              {stepOptions.map((step) => (
                 <SelectItem
-                  key={iteration.step}
-                  value={iteration.step.toString()}
+                  key={step.step}
+                  value={step.step.toString()}
                 >
-                  Iteration {iteration.step}
-                  {iteration.step === iterationOptions[0]?.step
-                    ? ' (latest)'
-                    : ''}{' '}
-                  - {iteration.count}{' '}
-                  {iteration.count === 1 ? 'sample' : 'samples'}
+                  Step {step.step}
+                  {step.step === stepOptions[0]?.step ? ' (latest)' : ''} -{' '}
+                  {step.count} {step.count === 1 ? 'sample' : 'samples'}
                 </SelectItem>
               ))}
             </SelectContent>
