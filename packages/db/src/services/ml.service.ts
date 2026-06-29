@@ -211,7 +211,7 @@ export async function listMlRuns(input: {
   mlProjectId?: string;
   limit?: number;
 }) {
-  return db.mlRun.findMany({
+  const runs = await db.mlRun.findMany({
     where: {
       projectId: input.projectId,
       mlProjectId: input.mlProjectId,
@@ -231,6 +231,8 @@ export async function listMlRuns(input: {
     },
     take: input.limit,
   });
+
+  return runs.map(withMlRunDisplayTags);
 }
 
 async function listLocalMlImageStorageKeys(input: {
@@ -293,7 +295,7 @@ export async function getMlRunById(input: {
   id: string;
   projectId: string;
 }) {
-  return db.mlRun.findFirst({
+  const run = await db.mlRun.findFirst({
     where: {
       id: input.id,
       projectId: input.projectId,
@@ -309,6 +311,8 @@ export async function getMlRunById(input: {
       mlProject: true,
     },
   });
+
+  return run ? withMlRunDisplayTags(run) : null;
 }
 
 export async function createMlRun(input: {
@@ -344,7 +348,7 @@ export async function createMlRun(input: {
       status: input.status ?? 'created',
       startedAt: input.status === 'running' ? new Date() : undefined,
       notes: input.notes,
-      tags: input.tags ?? [],
+      tags: getMlRunTags(input.tags, input.metadata),
       config: input.config ?? {},
       metadata: input.metadata ?? {},
       keyMetrics: input.keyMetrics ?? [],
@@ -360,6 +364,37 @@ export async function createMlRun(input: {
       mlProject: true,
     },
   });
+}
+
+export function getMlRunTags(
+  tags: string[] | undefined,
+  metadata: Record<string, unknown> | undefined
+) {
+  return tags?.length ? tags : getMlRunTagsFromMetadata(metadata);
+}
+
+export function getMlRunTagsFromMetadata(metadata: unknown) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return [];
+  }
+
+  const tags = (metadata as Record<string, unknown>).tags;
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  return tags.filter((tag): tag is string => typeof tag === 'string' && !!tag);
+}
+
+function withMlRunDisplayTags<T extends { tags: string[]; metadata: unknown }>(
+  run: T
+) {
+  if (run.tags.length > 0) {
+    return run;
+  }
+
+  const tags = getMlRunTagsFromMetadata(run.metadata);
+  return tags.length > 0 ? { ...run, tags } : run;
 }
 
 export function isKeyMetricsOnlyMlRunUpdate(input: MlRunUpdateInput) {

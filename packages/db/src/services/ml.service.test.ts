@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getMlKeyMetricNamesFromRunColumns,
   getMlRunColumnsWithKeyMetrics,
+  getMlRunTags,
+  getMlRunTagsFromMetadata,
   isKeyMetricsOnlyMlRunUpdate,
 } from './ml.service';
 
@@ -70,5 +72,24 @@ describe('getMlRunColumnsWithKeyMetrics', () => {
         ['loss', 'dice', 'loss']
       )
     ).toEqual(['tags', 'apiSource', 'metric:loss', 'metric:dice']);
+  });
+});
+
+describe('getMlRunTags', () => {
+  it('uses explicit run tags when present', () => {
+    expect(getMlRunTags(['manual'], { tags: ['sdk'] })).toEqual(['manual']);
+  });
+
+  it('falls back to tags embedded in SDK metadata', () => {
+    expect(getMlRunTags(undefined, { tags: ['baseline', 'mobile'] })).toEqual([
+      'baseline',
+      'mobile',
+    ]);
+  });
+
+  it('ignores invalid metadata tags', () => {
+    expect(
+      getMlRunTagsFromMetadata({ tags: ['baseline', '', 123, null] })
+    ).toEqual(['baseline']);
   });
 });
