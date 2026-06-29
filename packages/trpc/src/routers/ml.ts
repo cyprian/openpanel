@@ -58,6 +58,7 @@ export const mlRouter = createTRPCRouter({
       z.object({
         projectId: z.string(),
         mlProjectId: z.string().optional(),
+        limit: z.number().int().positive().max(100).optional(),
       })
     )
     .query(({ input }) => listMlRuns(input)),

@@ -181,6 +181,7 @@ export async function archiveMlProject(input: {
 export async function listMlRuns(input: {
   projectId: string;
   mlProjectId?: string;
+  limit?: number;
 }) {
   return db.mlRun.findMany({
     where: {
@@ -200,6 +201,7 @@ export async function listMlRuns(input: {
     orderBy: {
       createdAt: 'desc',
     },
+    take: input.limit,
   });
 }
 

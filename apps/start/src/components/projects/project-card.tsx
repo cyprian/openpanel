@@ -6,6 +6,7 @@ import { Link } from '@tanstack/react-router';
 import type { IServiceProject } from '@openpanel/db';
 
 import { cn } from '@/utils/cn';
+import { formatDistanceToNow } from 'date-fns';
 import {
   NetworkIcon,
   SettingsIcon,
@@ -13,6 +14,7 @@ import {
   TrendingUpIcon,
 } from 'lucide-react';
 import { FadeIn } from '../fade-in';
+import { MlStatusBadge } from '../ml/status-badge';
 import { SerieIcon } from '../report-chart/common/serie-icon';
 import { Skeleton } from '../skeleton';
 import { LinkButton } from '../ui/button';
@@ -76,8 +78,17 @@ function ProjectCard({
             {name}
           </div>
         </div>
-        <div className="-mx-4 aspect-[8/1] mb-4">
-          {isMlProject ? <ProjectMlPreview /> : <ProjectChartOuter id={id} />}
+        <div
+          className={cn(
+            '-mx-4 mb-4',
+            isMlProject ? 'min-h-32' : 'aspect-[8/1]',
+          )}
+        >
+          {isMlProject ? (
+            <ProjectMlPreview projectId={id} />
+          ) : (
+            <ProjectChartOuter id={id} />
+          )}
         </div>
         <div className="flex flex-1 gap-4 h-9 md:h-4">
           {isMlProject ? <ProjectMlMetrics /> : <ProjectMetrics id={id} />}
@@ -94,11 +105,55 @@ function ProjectCard({
   );
 }
 
-function ProjectMlPreview() {
+function ProjectMlPreview({ projectId }: { projectId: string }) {
+  const trpc = useTRPC();
+  const runs = useQuery(
+    trpc.ml.runs.queryOptions({
+      projectId,
+      limit: 3,
+    }),
+  );
+  const latestRuns = runs.data ?? [];
+
   return (
-    <div className="flex h-full items-center justify-center border-y bg-def-100 text-muted-foreground">
-      <NetworkIcon className="mr-2 size-4" />
-      <span className="font-medium text-sm">ML experiment tracking</span>
+    <div className="h-full border-y bg-def-100 px-4 py-3">
+      <div className="row gap-2 text-muted-foreground text-sm">
+        <NetworkIcon className="size-4" />
+        <span className="font-medium">Latest experiments</span>
+      </div>
+      {runs.isLoading ? (
+        <div className="mt-3 space-y-2">
+          <Skeleton className="h-5 w-full" />
+          <Skeleton className="h-5 w-4/5" />
+          <Skeleton className="h-5 w-3/5" />
+        </div>
+      ) : latestRuns.length > 0 ? (
+        <div className="mt-2 space-y-2">
+          {latestRuns.map((run) => (
+            <div
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm"
+              key={run.id}
+            >
+              <div className="min-w-0">
+                <div className="truncate font-medium">{run.name}</div>
+                <div className="truncate text-muted-foreground text-xs">
+                  {run.mlProject.name}
+                </div>
+              </div>
+              <div className="row gap-2">
+                <MlStatusBadge className="text-[10px]" status={run.status} />
+                <span className="hidden whitespace-nowrap text-muted-foreground text-xs sm:inline">
+                  {formatDistanceToNow(run.updatedAt, { addSuffix: true })}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 text-muted-foreground text-sm">
+          No experiments yet
+        </div>
+      )}
     </div>
   );
 }
