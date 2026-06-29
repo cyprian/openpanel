@@ -1,7 +1,12 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import sqlstring from 'sqlstring';
-import { chQuery, TABLE_NAMES } from '../clickhouse/client';
+import {
+  ch,
+  chQuery,
+  getReplicatedTableName,
+  TABLE_NAMES,
+} from '../clickhouse/client';
 import { db } from '../prisma-client';
 import { mlMetricBuffer } from '../buffers';
 
@@ -181,14 +186,24 @@ export async function archiveMlProject(input: {
     throw new Error('ML project not found');
   }
 
-  return db.mlProject.update({
+  const localImages = await listLocalMlImageStorageKeys({
+    projectId: input.projectId,
+    mlProjectId: input.id,
+  });
+
+  await db.mlProject.delete({
     where: {
       id: input.id,
     },
-    data: {
-      archivedAt: new Date(),
-    },
   });
+
+  await deleteMlMetricPoints({
+    projectId: input.projectId,
+    mlProjectId: input.id,
+  });
+  await deleteLocalMlImageFiles(localImages);
+
+  return project;
 }
 
 export async function listMlRuns(input: {
@@ -216,6 +231,62 @@ export async function listMlRuns(input: {
     },
     take: input.limit,
   });
+}
+
+async function listLocalMlImageStorageKeys(input: {
+  projectId: string;
+  mlProjectId?: string;
+  runId?: string;
+}) {
+  const images = await db.mlImage.findMany({
+    where: {
+      projectId: input.projectId,
+      mlProjectId: input.mlProjectId,
+      runId: input.runId,
+      storageProvider: ML_IMAGE_STORAGE_PROVIDER_LOCAL,
+    },
+    select: {
+      storageKey: true,
+    },
+  });
+
+  return images.map((image) => image.storageKey);
+}
+
+async function deleteMlMetricPoints(input: {
+  projectId: string;
+  mlProjectId?: string;
+  runId?: string;
+}) {
+  const where = [
+    `project_id = ${sqlstring.escape(input.projectId)}`,
+    input.mlProjectId
+      ? `ml_project_id = ${sqlstring.escape(input.mlProjectId)}`
+      : '',
+    input.runId ? `run_id = ${sqlstring.escape(input.runId)}` : '',
+  ].filter(Boolean);
+
+  await ch.command({
+    query: `DELETE FROM ${getReplicatedTableName(
+      TABLE_NAMES.ml_metric_points
+    )} WHERE ${where.join(' AND ')}`,
+    clickhouse_settings: {
+      lightweight_deletes_sync: '0',
+    },
+  });
+}
+
+async function deleteLocalMlImageFiles(storageKeys: string[]) {
+  for (const storageKey of storageKeys) {
+    try {
+      await unlink(getMlImageStoragePath(storageKey));
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        continue;
+      }
+      console.error('Failed to delete ML image file', { storageKey, error });
+    }
+  }
 }
 
 export async function getMlRunById(input: {
@@ -468,14 +539,24 @@ export async function archiveMlRun(input: {
     throw new Error('ML run not found');
   }
 
-  return db.mlRun.update({
+  const localImages = await listLocalMlImageStorageKeys({
+    projectId: input.projectId,
+    runId: input.id,
+  });
+
+  await db.mlRun.delete({
     where: {
       id: input.id,
     },
-    data: {
-      archivedAt: new Date(),
-    },
   });
+
+  await deleteMlMetricPoints({
+    projectId: input.projectId,
+    runId: input.id,
+  });
+  await deleteLocalMlImageFiles(localImages);
+
+  return run;
 }
 
 export async function logMlMetrics(input: {

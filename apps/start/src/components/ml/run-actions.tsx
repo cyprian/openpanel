@@ -84,8 +84,7 @@ export function MlRunActions({
     trpc.ml.archiveRun.mutationOptions({
       onError: handleErrorToastOptions({}),
       onSuccess: () => {
-        queryClient.invalidateQueries(trpc.ml.runs.pathFilter());
-        queryClient.invalidateQueries(trpc.ml.run.pathFilter());
+        queryClient.invalidateQueries(trpc.ml.pathFilter());
         toast.success('Run deleted');
         onDeleted?.();
       },
@@ -151,7 +150,7 @@ export function MlRunActions({
             onClick={() => {
               showConfirm({
                 title: 'Delete run',
-                text: `Are you sure you want to delete "${runName}"? This action cannot be undone.`,
+                text: `Are you sure you want to delete "${runName}"? This also removes associated metrics, images, and evaluation rows. This action cannot be undone.`,
                 onConfirm: () => archiveRun.mutate({ id: runId, projectId }),
               });
             }}
