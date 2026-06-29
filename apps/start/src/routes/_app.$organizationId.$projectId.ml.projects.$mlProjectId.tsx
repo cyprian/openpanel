@@ -53,6 +53,7 @@ const RUN_COLUMN_TAGS = 'tags';
 const RUN_COLUMN_NAME = 'name';
 const RUN_COLUMN_STATUS = 'status';
 const RUN_COLUMN_UPDATED_AT = 'updatedAt';
+const RUNS_REFETCH_INTERVAL_MS = 10_000;
 const STANDARD_RUN_COLUMNS = [
   { id: RUN_COLUMN_API_SOURCE, label: 'API source' },
   { id: RUN_COLUMN_TAGS, label: 'Tags' },
@@ -97,7 +98,11 @@ function MlProjectRunsIndex() {
   const project = useQuery(
     trpc.ml.project.queryOptions({ projectId, id: mlProjectId })
   );
-  const runs = useQuery(trpc.ml.runs.queryOptions({ projectId, mlProjectId }));
+  const runs = useQuery({
+    ...trpc.ml.runs.queryOptions({ projectId, mlProjectId }),
+    refetchInterval: RUNS_REFETCH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+  });
   useMlPageContext(
     'mlProject',
     { mlProjectId },
@@ -281,6 +286,7 @@ function MlProjectRunsIndex() {
                   onCheckedChange={(value) => toggleAllRuns(value === true)}
                 />
               </TableHead>
+              <TableHead className="w-14 text-right">#</TableHead>
               <SortableRunTableHead
                 columnId={RUN_COLUMN_NAME}
                 onSort={handleSort}
@@ -335,7 +341,7 @@ function MlProjectRunsIndex() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedRuns.map((run) => (
+            {sortedRuns.map((run, index) => (
               <TableRow key={run.id}>
                 <TableCell>
                   <Checkbox
@@ -347,9 +353,12 @@ function MlProjectRunsIndex() {
                     }
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-right font-mono text-muted-foreground">
+                  {index + 1}
+                </TableCell>
+                <TableCell className="overflow-hidden">
                   <Link
-                    className="inline-flex items-center gap-2 font-medium hover:underline"
+                    className="flex min-w-0 max-w-full items-center gap-2 font-medium hover:underline"
                     to="/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId"
                     params={{
                       organizationId,
@@ -357,9 +366,10 @@ function MlProjectRunsIndex() {
                       mlProjectId,
                       runId: run.id,
                     }}
+                    title={run.name}
                   >
-                    {run.name}
-                    <ArrowRightIcon className="size-3.5" />
+                    <span className="min-w-0 truncate">{run.name}</span>
+                    <ArrowRightIcon className="size-3.5 shrink-0" />
                   </Link>
                 </TableCell>
                 {showApiSourceColumn && (
@@ -719,7 +729,7 @@ function getRunTableColumnCount({
   showApiSourceColumn: boolean;
   showTagsColumn: boolean;
 }) {
-  const alwaysVisibleColumns = 5;
+  const alwaysVisibleColumns = 6;
   return (
     alwaysVisibleColumns +
     metricColumns +
