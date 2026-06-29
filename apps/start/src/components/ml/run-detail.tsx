@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import {
   Table,
   TableBody,
@@ -41,6 +42,7 @@ import {
   BracesIcon,
   DatabaseIcon,
   KeyIcon,
+  Settings2Icon,
   type LucideIcon,
 } from 'lucide-react';
 import type React from 'react';
@@ -58,7 +60,6 @@ import {
 
 const ML_CHART_BLUE = '#2563eb';
 const KEY_METRIC_COLORS = [
-  ML_CHART_BLUE,
   '#16a34a',
   '#9333ea',
   '#ca8a04',
@@ -85,6 +86,13 @@ export function MlRunDetail({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [selectedKeyMetrics, setSelectedKeyMetrics] = useState<string[]>([]);
+  const [pendingScrollMetric, setPendingScrollMetric] = useState<string | null>(
+    null
+  );
+  const [showOtherMetricCharts, setShowOtherMetricCharts] = useState(false);
+  const [showZeroMetricCharts, setShowZeroMetricCharts] = useState(false);
+  const [showZeroMetricValues, setShowZeroMetricValues] = useState(false);
+  const selectedKeyMetricsKey = selectedKeyMetrics.join('\u0000');
   const run = useQuery(trpc.ml.run.queryOptions({ projectId, id: runId }));
   const contextMlProjectId = run.data?.mlProjectId ?? fallbackMlProjectId;
   useMlPageContext(
@@ -152,18 +160,67 @@ export function MlRunDetail({
     enabled: !!run.data,
   });
   const summary = normalizeNumberRecord(run.data?.summary);
+  const visibleSummary = filterZeroMetrics(summary, showZeroMetricValues);
   const keyMetrics = selectedKeyMetrics.filter(
-    (metric) => summary[metric] !== undefined
+    (metric) => visibleSummary[metric] !== undefined
   );
   const keyMetricTextColors = useMemo(
     () =>
       new Map(
-        keyMetrics.map(
+        selectedKeyMetrics.map(
           (metric, index) => [metric, getKeyMetricColor(index)] as const
         )
       ),
-    [keyMetrics]
+    [selectedKeyMetrics]
   );
+  const metricSeriesQueryByName = useMemo(
+    () =>
+      new Map(
+        metricItems.map(
+          (item, index) =>
+            [item.metric, metricSeriesQueries[index]] as const
+        )
+      ),
+    [metricItems, metricSeriesQueries]
+  );
+  const keyMetricChartItems: MetricChartItem[] = selectedKeyMetrics.flatMap(
+    (metric, index) => {
+      const query = metricSeriesQueryByName.get(metric);
+      if (!query) {
+        return [];
+      }
+
+      return [
+        {
+          color: keyMetricTextColors.get(metric) ?? getKeyMetricColor(index),
+          metric,
+          query,
+        },
+      ];
+    }
+  ).filter((item) =>
+    shouldShowMetricChart(item, summary, showZeroMetricCharts)
+  );
+  const keyMetricChartNameSet = new Set(
+    keyMetricChartItems.map((item) => item.metric)
+  );
+  const regularMetricChartItems = metricItems
+    .filter((item) => !keyMetricChartNameSet.has(item.metric))
+    .map((item) => ({
+      color: ML_CHART_BLUE,
+      metric: item.metric,
+      query: metricSeriesQueryByName.get(item.metric),
+    }))
+    .filter((item) =>
+      shouldShowMetricChart(item, summary, showZeroMetricCharts)
+    );
+  const shouldCollapseOtherMetricCharts = keyMetricChartItems.length > 0;
+  const visibleRegularMetricChartItems =
+    shouldCollapseOtherMetricCharts && !showOtherMetricCharts
+      ? []
+      : regularMetricChartItems;
+  const shouldShowRegularMetricSection =
+    !shouldCollapseOtherMetricCharts || showOtherMetricCharts;
   const config = normalizeRecord(run.data?.config);
   const metadata = normalizeRecord(run.data?.metadata);
   const mlProjectId = contextMlProjectId;
@@ -177,6 +234,36 @@ export function MlRunDetail({
       )
     );
   }, [run.data?.keyMetrics, run.data?.mlProject.runColumns]);
+
+  useEffect(() => {
+    setPendingScrollMetric(null);
+    setShowOtherMetricCharts(false);
+    setShowZeroMetricCharts(false);
+    setShowZeroMetricValues(false);
+  }, [runId]);
+
+  useEffect(() => {
+    setShowOtherMetricCharts(false);
+  }, [selectedKeyMetricsKey]);
+
+  useEffect(() => {
+    if (!pendingScrollMetric) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      scrollToMetricChart(pendingScrollMetric);
+      setPendingScrollMetric(null);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [
+    pendingScrollMetric,
+    showOtherMetricCharts,
+    showZeroMetricCharts,
+    keyMetricChartItems,
+    visibleRegularMetricChartItems,
+  ]);
 
   const updateKeyMetrics = (metrics: string[]) => {
     setSelectedKeyMetrics(metrics);
@@ -192,6 +279,36 @@ export function MlRunDetail({
       ? selectedKeyMetrics.filter((item) => item !== metric)
       : [...new Set([...selectedKeyMetrics, metric])];
     updateKeyMetrics(metrics);
+  };
+
+  const handleMetricChartClick = (metric: string) => {
+    const hasMetricSeries = metricItems.some((item) => item.metric === metric);
+    if (!hasMetricSeries) {
+      return;
+    }
+
+    const isVisibleRegularMetric = visibleRegularMetricChartItems.some(
+      (item) => item.metric === metric
+    );
+    const isVisibleKeyMetric = keyMetricChartItems.some(
+      (item) => item.metric === metric
+    );
+
+    if (isVisibleKeyMetric || isVisibleRegularMetric) {
+      scrollToMetricChart(metric);
+      return;
+    }
+
+    const isConfiguredKeyMetric = selectedKeyMetrics.includes(metric);
+    if (shouldCollapseOtherMetricCharts && !isConfiguredKeyMetric) {
+      setShowOtherMetricCharts(true);
+    }
+
+    if (!showZeroMetricCharts) {
+      setShowZeroMetricCharts(true);
+    }
+
+    setPendingScrollMetric(metric);
   };
 
   return (
@@ -215,6 +332,12 @@ export function MlRunDetail({
         actions={
           run.data ? (
             <>
+              <ViewSettingsDialog
+                onShowZeroMetricChartsChange={setShowZeroMetricCharts}
+                onShowZeroMetricValuesChange={setShowZeroMetricValues}
+                showZeroMetricCharts={showZeroMetricCharts}
+                showZeroMetricValues={showZeroMetricValues}
+              />
               <JsonDialogButton
                 emptyText="No config logged."
                 icon={BracesIcon}
@@ -282,6 +405,29 @@ export function MlRunDetail({
           <p className="whitespace-pre-wrap text-sm">{run.data.notes}</p>
         </section>
       )}
+      {keyMetricChartItems.length > 0 && (
+        <>
+          <MetricChartsSection
+            badgeText={`${keyMetricChartItems.length} key ${keyMetricChartItems.length === 1 ? 'metric' : 'metrics'}`}
+            description="Configured key metrics, shown first in dashboard order"
+            isLoadingMetricNames={metricNames.isLoading}
+            metricItems={keyMetricChartItems}
+            summary={summary}
+            title="Key metric trends"
+          />
+          {regularMetricChartItems.length > 0 && !showOtherMetricCharts && (
+            <div className="-mt-4 mb-4 rounded-b-md border border-t-0 bg-card p-3">
+              <Button
+                className="w-full"
+                onClick={() => setShowOtherMetricCharts(true)}
+                variant="outline"
+              >
+                Show all metric charts ({regularMetricChartItems.length} more)
+              </Button>
+            </div>
+          )}
+        </>
+      )}
       {keyMetrics.length > 0 && (
         <section className="mb-4 rounded-md border bg-card p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -300,8 +446,9 @@ export function MlRunDetail({
             keyMetrics={selectedKeyMetrics}
             metricTextColors={keyMetricTextColors}
             metrics={Object.fromEntries(
-              keyMetrics.map((metric) => [metric, summary[metric]])
+              keyMetrics.map((metric) => [metric, visibleSummary[metric]])
             )}
+            onMetricChartClick={handleMetricChartClick}
             onToggleKeyMetric={toggleKeyMetric}
             showKeyToggle={false}
           />
@@ -315,25 +462,47 @@ export function MlRunDetail({
               Latest scalar values logged for this run
             </div>
           </div>
-          {Object.keys(summary).length > 0 && (
+          {Object.keys(visibleSummary).length > 0 && (
             <Badge className="ml-auto" variant="outline">
-              {Object.keys(summary).length} metrics
+              {Object.keys(visibleSummary).length} metrics
             </Badge>
           )}
         </div>
         <MetricsGrid
           chartMetricNames={metricItems.map((item) => item.metric)}
+          emptyText={
+            showZeroMetricValues || Object.keys(summary).length === 0
+              ? 'No scalar metrics have been logged for this run yet.'
+              : 'No non-zero scalar metrics to display.'
+          }
           keyMetrics={selectedKeyMetrics}
-          metrics={summary}
+          metrics={visibleSummary}
+          onMetricChartClick={handleMetricChartClick}
           onToggleKeyMetric={toggleKeyMetric}
         />
       </section>
-      <MetricChartsSection
-        isLoadingMetricNames={metricNames.isLoading}
-        metricItems={metricItems}
-        queries={metricSeriesQueries}
-        summary={summary}
-      />
+      {shouldShowRegularMetricSection && (
+        <MetricChartsSection
+          description={
+            keyMetricChartItems.length > 0
+              ? 'All remaining logged metric series'
+              : 'One chart per logged metric'
+          }
+          isLoadingMetricNames={metricNames.isLoading}
+          metricItems={visibleRegularMetricChartItems}
+          noDataText={
+            showZeroMetricCharts
+              ? 'No metric series have been logged for this run yet.'
+              : 'No non-zero metric series to display.'
+          }
+          summary={summary}
+          title={
+            keyMetricChartItems.length > 0
+              ? 'Other metric trends'
+              : 'Metric trends'
+          }
+        />
+      )}
       {hasEvaluationRows && (
         <EvaluationTable
           data={evaluationRows.data}
@@ -405,18 +574,85 @@ type MetricSeriesQueryResult = {
   isLoading: boolean;
 };
 
+type MetricChartItem = {
+  color: string;
+  metric: string;
+  query?: MetricSeriesQueryResult;
+};
+
+function ViewSettingsDialog({
+  onShowZeroMetricChartsChange,
+  onShowZeroMetricValuesChange,
+  showZeroMetricCharts,
+  showZeroMetricValues,
+}: {
+  onShowZeroMetricChartsChange: (value: boolean) => void;
+  onShowZeroMetricValuesChange: (value: boolean) => void;
+  showZeroMetricCharts: boolean;
+  showZeroMetricValues: boolean;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button icon={Settings2Icon} variant="outline">
+          View settings
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>View settings</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <label className="flex items-center justify-between gap-4 rounded-md border bg-background p-3">
+            <span className="min-w-0">
+              <span className="block font-medium text-sm">
+                Show zero-value metrics
+              </span>
+              <span className="block text-muted-foreground text-xs">
+                Include final metric values equal to 0.
+              </span>
+            </span>
+            <Switch
+              checked={showZeroMetricValues}
+              onCheckedChange={onShowZeroMetricValuesChange}
+            />
+          </label>
+          <label className="flex items-center justify-between gap-4 rounded-md border bg-background p-3">
+            <span className="min-w-0">
+              <span className="block font-medium text-sm">
+                Show zero-only charts
+              </span>
+              <span className="block text-muted-foreground text-xs">
+                Include charts where every logged point is 0.
+              </span>
+            </span>
+            <Switch
+              checked={showZeroMetricCharts}
+              onCheckedChange={onShowZeroMetricChartsChange}
+            />
+          </label>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MetricsGrid({
   chartMetricNames,
+  emptyText = 'No scalar metrics have been logged for this run yet.',
   keyMetrics,
   metricTextColors,
   metrics,
+  onMetricChartClick,
   onToggleKeyMetric,
   showKeyToggle = true,
 }: {
   chartMetricNames: string[];
+  emptyText?: string;
   keyMetrics: string[];
   metricTextColors?: Map<string, string>;
   metrics: Record<string, number>;
+  onMetricChartClick: (metric: string) => void;
   onToggleKeyMetric: (metric: string) => void;
   showKeyToggle?: boolean;
 }) {
@@ -427,7 +663,7 @@ function MetricsGrid({
   if (entries.length === 0) {
     return (
       <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
-        No scalar metrics have been logged for this run yet.
+        {emptyText}
       </div>
     );
   }
@@ -463,7 +699,7 @@ function MetricsGrid({
               className="block w-full p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default data-[with-key-toggle=true]:pr-9"
               data-with-key-toggle={showKeyToggle}
               disabled={!hasChart}
-              onClick={() => scrollToMetricChart(key)}
+              onClick={() => onMetricChartClick(key)}
               type="button"
             >
               <div className="truncate text-muted-foreground text-xs">{key}</div>
@@ -482,28 +718,34 @@ function MetricsGrid({
 }
 
 function MetricChartsSection({
+  badgeText,
+  description,
   isLoadingMetricNames,
   metricItems,
-  queries,
+  noDataText = 'No metric series have been logged for this run yet.',
   summary,
+  title,
 }: {
+  badgeText?: string;
+  description: string;
   isLoadingMetricNames: boolean;
-  metricItems: Array<{ metric: string }>;
-  queries: MetricSeriesQueryResult[];
+  metricItems: MetricChartItem[];
+  noDataText?: string;
   summary: Record<string, number>;
+  title: string;
 }) {
   return (
-    <section className="rounded-md border bg-card p-4">
+    <section className="mb-4 rounded-md border bg-card p-4">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div>
-          <div className="font-medium">Metric trends</div>
+          <div className="font-medium">{title}</div>
           <div className="text-muted-foreground text-xs">
-            One chart per logged metric
+            {description}
           </div>
         </div>
         {metricItems.length > 0 && (
           <Badge className="ml-auto" variant="outline">
-            {metricItems.length} charts
+            {badgeText ?? `${metricItems.length} charts`}
           </Badge>
         )}
       </div>
@@ -513,13 +755,12 @@ function MetricChartsSection({
         </div>
       ) : metricItems.length === 0 ? (
         <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
-          No metric series have been logged for this run yet.
+          {noDataText}
         </div>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
-          {metricItems.map((item, index) => {
-            const query = queries[index];
-            const data = query?.data ?? [];
+          {metricItems.map((item) => {
+            const data = item.query?.data ?? [];
             const latestValue =
               summary[item.metric] ?? getLatestMetricSeriesValue(data);
 
@@ -540,12 +781,16 @@ function MetricChartsSection({
                     {formatMetricValue(latestValue)}
                   </div>
                 </div>
-                {query?.isLoading ? (
+                {item.query?.isLoading ? (
                   <div className="center-center h-[280px] text-muted-foreground text-sm">
                     Loading chart...
                   </div>
                 ) : (
-                  <MetricChart data={data} metric={item.metric} />
+                  <MetricChart
+                    color={item.color}
+                    data={data}
+                    metric={item.metric}
+                  />
                 )}
               </article>
             );
@@ -814,9 +1059,11 @@ function JsonDialogButton({
 }
 
 function MetricChart({
+  color,
   data,
   metric,
 }: {
+  color: string;
   data: Array<{ step: number; value: number }>;
   metric: string;
 }) {
@@ -875,25 +1122,25 @@ function MetricChart({
             width={64}
           />
           <Tooltip
-            content={<MetricTooltip metric={metric} />}
-            cursor={{ stroke: ML_CHART_BLUE, strokeDasharray: '4 4' }}
+            content={<MetricTooltip color={color} metric={metric} />}
+            cursor={{ stroke: color, strokeDasharray: '4 4' }}
           />
           <Line
             activeDot={{
               r: 5,
-              fill: ML_CHART_BLUE,
+              fill: color,
               stroke: 'var(--background)',
               strokeWidth: 2,
             }}
             dataKey="value"
             dot={{
               r: 2,
-              fill: ML_CHART_BLUE,
-              stroke: ML_CHART_BLUE,
+              fill: color,
+              stroke: color,
               strokeWidth: 1,
             }}
             isAnimationActive={false}
-            stroke={ML_CHART_BLUE}
+            stroke={color}
             strokeWidth={2.5}
             type="monotone"
           />
@@ -905,9 +1152,10 @@ function MetricChart({
 
 function MetricTooltip({
   active,
+  color,
   payload,
   metric,
-}: TooltipProps<number, string> & { metric: string }) {
+}: TooltipProps<number, string> & { color: string; metric: string }) {
   const point = payload?.[0]?.payload as
     | { step: number; value: number }
     | undefined;
@@ -921,7 +1169,7 @@ function MetricTooltip({
       <ChartTooltipHeader>
         <div className="font-medium">Step {point.step}</div>
       </ChartTooltipHeader>
-      <ChartTooltipItem color={ML_CHART_BLUE}>
+      <ChartTooltipItem color={color}>
         <div className="flex justify-between gap-8 font-medium font-mono">
           <span>{metric}</span>
           <span>{formatNumber(point.value)}</span>
@@ -949,6 +1197,40 @@ function normalizeNumberRecord(value: unknown): Record<string, number> {
   }
 
   return result;
+}
+
+function filterZeroMetrics(
+  metrics: Record<string, number>,
+  showZeroMetricValues: boolean
+) {
+  if (showZeroMetricValues) {
+    return metrics;
+  }
+
+  return Object.fromEntries(
+    Object.entries(metrics).filter(([, value]) => value !== 0)
+  );
+}
+
+function shouldShowMetricChart(
+  item: MetricChartItem,
+  summary: Record<string, number>,
+  showZeroMetricCharts: boolean
+) {
+  if (showZeroMetricCharts) {
+    return true;
+  }
+
+  const data = item.query?.data ?? [];
+  if (data.some((point) => point.value !== 0)) {
+    return true;
+  }
+
+  if (data.length > 0) {
+    return false;
+  }
+
+  return summary[item.metric] !== 0;
 }
 
 function formatNumber(value: number) {
