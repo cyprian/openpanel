@@ -31,6 +31,7 @@ export const zMlRunCreate = z.object({
   tags: z.array(z.string().min(1)).default([]),
   config: z.record(z.string(), z.unknown()).default({}),
   metadata: z.record(z.string(), z.unknown()).default({}),
+  keyMetrics: z.array(z.string().min(1)).optional(),
 });
 
 export const zMlRunUpdate = z.object({

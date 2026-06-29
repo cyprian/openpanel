@@ -30,6 +30,7 @@ export const zCreateMlRun = z.object({
   tags: z.array(z.string().min(1)).default([]),
   config: z.record(z.string(), z.unknown()).default({}),
   metadata: z.record(z.string(), z.unknown()).default({}),
+  keyMetrics: z.array(z.string().min(1)).optional(),
 });
 
 export const zUpdateMlRun = z.object({
@@ -87,6 +88,7 @@ export async function createRun(
     tags: request.body.tags,
     config: request.body.config,
     metadata: request.body.metadata,
+    keyMetrics: request.body.keyMetrics,
   });
 
   return reply.status(201).send({
