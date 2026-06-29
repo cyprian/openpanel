@@ -8,6 +8,7 @@ import {
   getMlMetricSeries,
   getMlProjectById,
   getMlRunById,
+  listMlEvaluationIterations,
   listMlEvaluationRows,
   listMlImagesWithData,
   listMlProjects,
@@ -151,6 +152,7 @@ export const mlRouter = createTRPCRouter({
       z.object({
         projectId: z.string(),
         runId: z.string(),
+        step: z.number().int().nonnegative().optional(),
         search: z.string().optional(),
         page: z.number().int().positive().default(1),
         pageSize: z.number().int().positive().max(100).default(25),
@@ -159,4 +161,13 @@ export const mlRouter = createTRPCRouter({
       })
     )
     .query(({ input }) => listMlEvaluationRows(input)),
+
+  evaluationIterations: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        runId: z.string(),
+      })
+    )
+    .query(({ input }) => listMlEvaluationIterations(input)),
 });

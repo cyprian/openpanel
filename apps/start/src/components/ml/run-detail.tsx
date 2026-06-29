@@ -12,6 +12,13 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import {
   Table,
@@ -128,6 +135,8 @@ export function MlRunDetail({
   const [evaluationSortDirection, setEvaluationSortDirection] = useState<
     'asc' | 'desc'
   >('desc');
+  const [selectedEvaluationIteration, setSelectedEvaluationIteration] =
+    useState<number | null>(null);
   const metricItems = metricNames.data ?? [];
   const metricSeriesQueries = useQueries({
     queries: metricItems.map((item) =>
@@ -147,17 +156,26 @@ export function MlRunDetail({
     }),
     enabled: !!run.data,
   });
+  const evaluationIterations = useQuery({
+    ...trpc.ml.evaluationIterations.queryOptions({ projectId, runId }),
+    enabled: !!run.data,
+  });
+  const evaluationIterationOptions = evaluationIterations.data ?? [];
+  const latestEvaluationIteration = evaluationIterationOptions[0]?.step;
+  const effectiveEvaluationIteration =
+    selectedEvaluationIteration ?? latestEvaluationIteration;
   const evaluationRows = useQuery({
     ...trpc.ml.evaluationRows.queryOptions({
       projectId,
       runId,
+      step: effectiveEvaluationIteration,
       search: evaluationSearch || undefined,
       page: evaluationPage,
       pageSize: 10,
       sortBy: evaluationSortBy,
       sortDirection: evaluationSortDirection,
     }),
-    enabled: !!run.data,
+    enabled: !!run.data && evaluationIterations.isFetched,
   });
   const summary = normalizeNumberRecord(run.data?.summary);
   const visibleSummary = filterZeroMetrics(summary, showZeroMetricValues);
@@ -240,11 +258,27 @@ export function MlRunDetail({
     setShowOtherMetricCharts(false);
     setShowZeroMetricCharts(false);
     setShowZeroMetricValues(false);
+    setSelectedEvaluationIteration(null);
+    setEvaluationPage(1);
   }, [runId]);
 
   useEffect(() => {
     setShowOtherMetricCharts(false);
   }, [selectedKeyMetricsKey]);
+
+  useEffect(() => {
+    if (selectedEvaluationIteration === null) {
+      return;
+    }
+
+    const hasSelectedIteration = evaluationIterationOptions.some(
+      (iteration) => iteration.step === selectedEvaluationIteration
+    );
+    if (!hasSelectedIteration) {
+      setSelectedEvaluationIteration(null);
+      setEvaluationPage(1);
+    }
+  }, [evaluationIterationOptions, selectedEvaluationIteration]);
 
   useEffect(() => {
     if (!pendingScrollMetric) {
@@ -507,7 +541,13 @@ export function MlRunDetail({
         <EvaluationTable
           data={evaluationRows.data}
           isLoading={evaluationRows.isLoading}
+          isLoadingIterations={evaluationIterations.isLoading}
+          iterationOptions={evaluationIterationOptions}
           onPageChange={setEvaluationPage}
+          onIterationChange={(value) => {
+            setSelectedEvaluationIteration(value);
+            setEvaluationPage(1);
+          }}
           onSearchChange={(value) => {
             setEvaluationSearch(value);
             setEvaluationPage(1);
@@ -522,6 +562,7 @@ export function MlRunDetail({
           }}
           page={evaluationPage}
           search={evaluationSearch}
+          selectedIteration={effectiveEvaluationIteration}
           sortBy={evaluationSortBy}
           sortDirection={evaluationSortDirection}
         />
@@ -560,6 +601,11 @@ type MlEvaluationRowsData = {
   pageSize: number;
   total: number;
   totalPages: number;
+};
+
+type MlEvaluationIteration = {
+  step: number;
+  count: number;
 };
 
 type MlMetricSeriesPoint = {
@@ -804,10 +850,14 @@ function MetricChartsSection({
 function EvaluationTable({
   data,
   isLoading,
+  isLoadingIterations,
+  iterationOptions,
   search,
   page,
+  selectedIteration,
   sortBy,
   sortDirection,
+  onIterationChange,
   onSearchChange,
   onPageChange,
   onSortByChange,
@@ -815,10 +865,14 @@ function EvaluationTable({
 }: {
   data?: MlEvaluationRowsData;
   isLoading: boolean;
+  isLoadingIterations: boolean;
+  iterationOptions: MlEvaluationIteration[];
   search: string;
   page: number;
+  selectedIteration?: number;
   sortBy: string;
   sortDirection: 'asc' | 'desc';
+  onIterationChange: (value: number | null) => void;
   onSearchChange: (value: string) => void;
   onPageChange: (value: number) => void;
   onSortByChange: (value: string) => void;
@@ -845,6 +899,7 @@ function EvaluationTable({
     [rows]
   );
   const totalPages = data?.totalPages ?? 1;
+  const hasIterationOptions = iterationOptions.length > 0;
 
   return (
     <section className="mt-4 rounded-md border bg-card p-4">
@@ -853,9 +908,38 @@ function EvaluationTable({
           <div className="font-medium">Evaluation table</div>
           <div className="text-muted-foreground text-xs">
             {data?.total ?? 0} samples
+            {selectedIteration !== undefined
+              ? ` in iteration ${selectedIteration}`
+              : ''}
           </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Select
+            disabled={isLoadingIterations || !hasIterationOptions}
+            onValueChange={(value) =>
+              onIterationChange(value ? Number(value) : null)
+            }
+            value={selectedIteration?.toString() ?? ''}
+          >
+            <SelectTrigger aria-label="Iteration" className="w-40">
+              <SelectValue placeholder="Iteration" />
+            </SelectTrigger>
+            <SelectContent>
+              {iterationOptions.map((iteration) => (
+                <SelectItem
+                  key={iteration.step}
+                  value={iteration.step.toString()}
+                >
+                  Iteration {iteration.step}
+                  {iteration.step === iterationOptions[0]?.step
+                    ? ' (latest)'
+                    : ''}{' '}
+                  - {iteration.count}{' '}
+                  {iteration.count === 1 ? 'sample' : 'samples'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input
             className="w-48"
             onChange={(event) => onSearchChange(event.target.value)}

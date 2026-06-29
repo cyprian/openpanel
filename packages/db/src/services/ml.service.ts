@@ -900,6 +900,7 @@ export async function createMlEvaluationRow(input: {
 export async function listMlEvaluationRows(input: {
   projectId: string;
   runId: string;
+  step?: number;
   search?: string;
   page?: number;
   pageSize?: number;
@@ -911,6 +912,7 @@ export async function listMlEvaluationRows(input: {
   const where = {
     projectId: input.projectId,
     runId: input.runId,
+    step: input.step,
     ...(input.search
       ? {
           sampleId: {
@@ -956,6 +958,41 @@ export async function listMlEvaluationRows(input: {
     total,
     totalPages: Math.max(Math.ceil(total / pageSize), 1),
   };
+}
+
+export async function listMlEvaluationIterations(input: {
+  projectId: string;
+  runId: string;
+}) {
+  const iterations = await db.mlEvaluationRow.groupBy({
+    by: ['step'],
+    where: {
+      projectId: input.projectId,
+      runId: input.runId,
+      step: {
+        not: null,
+      },
+    },
+    _count: {
+      _all: true,
+    },
+    orderBy: {
+      step: 'desc',
+    },
+  });
+
+  return iterations.flatMap((iteration) => {
+    if (iteration.step === null) {
+      return [];
+    }
+
+    return [
+      {
+        step: iteration.step,
+        count: iteration._count._all,
+      },
+    ];
+  });
 }
 
 async function listMlImagesByIdsWithData(input: {
