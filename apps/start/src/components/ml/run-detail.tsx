@@ -438,29 +438,6 @@ export function MlRunDetail({
           <p className="whitespace-pre-wrap text-sm">{run.data.notes}</p>
         </section>
       )}
-      {keyMetricChartItems.length > 0 && (
-        <>
-          <MetricChartsSection
-            badgeText={`${keyMetricChartItems.length} key ${keyMetricChartItems.length === 1 ? 'metric' : 'metrics'}`}
-            description="Configured key metrics, shown first in dashboard order"
-            isLoadingMetricNames={metricNames.isLoading}
-            metricItems={keyMetricChartItems}
-            summary={summary}
-            title="Key metric trends"
-          />
-          {regularMetricChartItems.length > 0 && !showOtherMetricCharts && (
-            <div className="-mt-4 mb-4 rounded-b-md border border-t-0 bg-card p-3">
-              <Button
-                className="w-full"
-                onClick={() => setShowOtherMetricCharts(true)}
-                variant="outline"
-              >
-                Show all metric charts ({regularMetricChartItems.length} more)
-              </Button>
-            </div>
-          )}
-        </>
-      )}
       {keyMetrics.length > 0 && (
         <section className="mb-4 rounded-md border bg-card p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -486,6 +463,29 @@ export function MlRunDetail({
             showKeyToggle={false}
           />
         </section>
+      )}
+      {keyMetricChartItems.length > 0 && (
+        <>
+          <MetricChartsSection
+            badgeText={`${keyMetricChartItems.length} key ${keyMetricChartItems.length === 1 ? 'metric' : 'metrics'}`}
+            description="Configured key metrics, shown first in dashboard order"
+            isLoadingMetricNames={metricNames.isLoading}
+            metricItems={keyMetricChartItems}
+            summary={summary}
+            title="Key metric trends"
+          />
+          {regularMetricChartItems.length > 0 && !showOtherMetricCharts && (
+            <div className="-mt-4 mb-4 rounded-b-md border border-t-0 bg-card p-3">
+              <Button
+                className="w-full"
+                onClick={() => setShowOtherMetricCharts(true)}
+                variant="outline"
+              >
+                Show all metric charts ({regularMetricChartItems.length} more)
+              </Button>
+            </div>
+          )}
+        </>
       )}
       <section className="mb-4 rounded-md border bg-card p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
