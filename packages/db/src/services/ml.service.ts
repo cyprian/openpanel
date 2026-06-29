@@ -239,12 +239,14 @@ async function listLocalMlImageStorageKeys(input: {
   projectId: string;
   mlProjectId?: string;
   runId?: string;
+  runIds?: string[];
 }) {
   const images = await db.mlImage.findMany({
     where: {
       projectId: input.projectId,
       mlProjectId: input.mlProjectId,
       runId: input.runId,
+      ...(input.runIds ? { runId: { in: input.runIds } } : {}),
       storageProvider: ML_IMAGE_STORAGE_PROVIDER_LOCAL,
     },
     select: {
@@ -259,6 +261,7 @@ async function deleteMlMetricPoints(input: {
   projectId: string;
   mlProjectId?: string;
   runId?: string;
+  runIds?: string[];
 }) {
   const where = [
     `project_id = ${sqlstring.escape(input.projectId)}`,
@@ -266,6 +269,9 @@ async function deleteMlMetricPoints(input: {
       ? `ml_project_id = ${sqlstring.escape(input.mlProjectId)}`
       : '',
     input.runId ? `run_id = ${sqlstring.escape(input.runId)}` : '',
+    input.runIds?.length
+      ? `run_id IN (${input.runIds.map((id) => sqlstring.escape(id)).join(', ')})`
+      : '',
   ].filter(Boolean);
 
   await ch.command({
@@ -592,6 +598,52 @@ export async function archiveMlRun(input: {
   await deleteLocalMlImageFiles(localImages);
 
   return run;
+}
+
+export async function archiveMlRuns(input: {
+  ids: string[];
+  projectId: string;
+}) {
+  const ids = getUniqueStrings(input.ids);
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const runs = await db.mlRun.findMany({
+    where: {
+      id: {
+        in: ids,
+      },
+      projectId: input.projectId,
+      archivedAt: null,
+    },
+  });
+
+  if (runs.length !== ids.length) {
+    throw new Error('One or more ML runs were not found');
+  }
+
+  const localImages = await listLocalMlImageStorageKeys({
+    projectId: input.projectId,
+    runIds: ids,
+  });
+
+  await db.mlRun.deleteMany({
+    where: {
+      id: {
+        in: ids,
+      },
+      projectId: input.projectId,
+    },
+  });
+
+  await deleteMlMetricPoints({
+    projectId: input.projectId,
+    runIds: ids,
+  });
+  await deleteLocalMlImageFiles(localImages);
+
+  return runs;
 }
 
 export async function logMlMetrics(input: {

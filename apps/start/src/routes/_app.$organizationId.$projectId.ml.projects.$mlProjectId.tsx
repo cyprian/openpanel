@@ -24,6 +24,7 @@ import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { useMlPageContext } from '@/hooks/use-page-context-helpers';
 import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
+import { showConfirm } from '@/modals';
 import { cn } from '@/utils/cn';
 import { createProjectTitle } from '@/utils/title';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,8 +43,10 @@ import {
   CogIcon,
   GitCompareIcon,
   SearchIcon,
+  TrashIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 
 const RUN_COLUMN_API_SOURCE = 'apiSource';
 const RUN_COLUMN_TAGS = 'tags';
@@ -89,6 +92,7 @@ function MlProjectRunsIndex() {
   const queryClient = useQueryClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectedRunColumns, setSelectedRunColumns] = useState<string[]>([]);
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [runSort, setRunSort] = useState<RunSort | null>(null);
   const project = useQuery(
     trpc.ml.project.queryOptions({ projectId, id: mlProjectId })
@@ -110,6 +114,18 @@ function MlProjectRunsIndex() {
         queryClient.invalidateQueries(trpc.ml.projects.pathFilter());
         queryClient.invalidateQueries(trpc.ml.run.pathFilter());
         queryClient.invalidateQueries(trpc.ml.runs.pathFilter());
+      },
+    })
+  );
+  const archiveRuns = useMutation(
+    trpc.ml.archiveRuns.mutationOptions({
+      onError: handleErrorToastOptions({}),
+      onSuccess: (deletedRuns) => {
+        queryClient.invalidateQueries(trpc.ml.pathFilter());
+        setSelectedRunIds([]);
+        toast.success(
+          `Deleted ${deletedRuns.length} ${deletedRuns.length === 1 ? 'run' : 'runs'}`
+        );
       },
     })
   );
@@ -144,6 +160,15 @@ function MlProjectRunsIndex() {
       })
       .map(({ run }) => run);
   }, [runs.data, runSort]);
+  const selectedRunIdSet = useMemo(
+    () => new Set(selectedRunIds),
+    [selectedRunIds]
+  );
+  const selectedRuns = sortedRuns.filter((run) => selectedRunIdSet.has(run.id));
+  const selectedRunCount = selectedRuns.length;
+  const allRunsSelected =
+    sortedRuns.length > 0 && selectedRunCount === sortedRuns.length;
+  const someRunsSelected = selectedRunCount > 0 && !allRunsSelected;
 
   const handleSort = (columnId: string) => {
     setRunSort((current) => ({
@@ -156,12 +181,45 @@ function MlProjectRunsIndex() {
     setSelectedRunColumns(normalizeSavedRunColumns(project.data?.runColumns));
   }, [project.data?.runColumns]);
 
+  useEffect(() => {
+    const availableRunIds = new Set((runs.data ?? []).map((run) => run.id));
+    setSelectedRunIds((current) => {
+      const next = current.filter((id) => availableRunIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [runs.data]);
+
   const updateRunColumns = (columns: string[]) => {
     setSelectedRunColumns(columns);
     updateProject.mutate({
       id: mlProjectId,
       projectId,
       runColumns: columns,
+    });
+  };
+
+  const toggleAllRuns = (isChecked: boolean) => {
+    setSelectedRunIds(isChecked ? sortedRuns.map((run) => run.id) : []);
+  };
+
+  const toggleRunSelection = (runId: string, isChecked: boolean) => {
+    setSelectedRunIds((current) =>
+      isChecked
+        ? [...new Set([...current, runId])]
+        : current.filter((id) => id !== runId)
+    );
+  };
+
+  const deleteSelectedRuns = () => {
+    const ids = selectedRuns.map((run) => run.id);
+    if (ids.length === 0) {
+      return;
+    }
+
+    showConfirm({
+      title: 'Delete selected runs',
+      text: `Are you sure you want to delete ${ids.length} ${ids.length === 1 ? 'run' : 'runs'}? This also removes associated metrics, images, and evaluation rows. This action cannot be undone.`,
+      onConfirm: () => archiveRuns.mutate({ ids, projectId }),
     });
   };
 
@@ -173,6 +231,16 @@ function MlProjectRunsIndex() {
         className="mb-8"
         actions={
           <>
+            {selectedRunCount > 0 && (
+              <Button
+                icon={TrashIcon}
+                loading={archiveRuns.isPending}
+                onClick={deleteSelectedRuns}
+                variant="destructive"
+              >
+                Delete {selectedRunCount}
+              </Button>
+            )}
             <Button
               icon={CogIcon}
               onClick={() => setSettingsOpen(true)}
@@ -203,6 +271,16 @@ function MlProjectRunsIndex() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  aria-label="Select all runs"
+                  checked={
+                    someRunsSelected ? 'indeterminate' : allRunsSelected
+                  }
+                  disabled={sortedRuns.length === 0 || archiveRuns.isPending}
+                  onCheckedChange={(value) => toggleAllRuns(value === true)}
+                />
+              </TableHead>
               <SortableRunTableHead
                 columnId={RUN_COLUMN_NAME}
                 onSort={handleSort}
@@ -259,6 +337,16 @@ function MlProjectRunsIndex() {
           <TableBody>
             {sortedRuns.map((run) => (
               <TableRow key={run.id}>
+                <TableCell>
+                  <Checkbox
+                    aria-label={`Select ${run.name}`}
+                    checked={selectedRunIdSet.has(run.id)}
+                    disabled={archiveRuns.isPending}
+                    onCheckedChange={(value) =>
+                      toggleRunSelection(run.id, value === true)
+                    }
+                  />
+                </TableCell>
                 <TableCell>
                   <Link
                     className="inline-flex items-center gap-2 font-medium hover:underline"
@@ -631,7 +719,7 @@ function getRunTableColumnCount({
   showApiSourceColumn: boolean;
   showTagsColumn: boolean;
 }) {
-  const alwaysVisibleColumns = 4;
+  const alwaysVisibleColumns = 5;
   return (
     alwaysVisibleColumns +
     metricColumns +

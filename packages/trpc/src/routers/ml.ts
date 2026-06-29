@@ -1,6 +1,7 @@
 import {
   archiveMlProject,
   archiveMlRun,
+  archiveMlRuns,
   createMlProject,
   createMlRun,
   getMlMetricNames,
@@ -84,6 +85,15 @@ export const mlRouter = createTRPCRouter({
   archiveRun: protectedProcedure
     .input(z.object({ id: z.string(), projectId: z.string() }))
     .mutation(({ input }) => archiveMlRun(input)),
+
+  archiveRuns: protectedProcedure
+    .input(
+      z.object({
+        ids: z.array(z.string()).min(1).max(100),
+        projectId: z.string(),
+      })
+    )
+    .mutation(({ input }) => archiveMlRuns(input)),
 
   logMetrics: protectedProcedure
     .input(
