@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { isKeyMetricsOnlyMlRunUpdate } from './ml.service';
+import {
+  getMlKeyMetricNamesFromRunColumns,
+  getMlRunColumnsWithKeyMetrics,
+  isKeyMetricsOnlyMlRunUpdate,
+} from './ml.service';
 
 vi.mock('../buffers', () => ({
   mlMetricBuffer: {},
@@ -41,5 +45,30 @@ describe('isKeyMetricsOnlyMlRunUpdate', () => {
         name: 'Experiment 1',
       })
     ).toBe(false);
+  });
+});
+
+describe('getMlKeyMetricNamesFromRunColumns', () => {
+  it('extracts metric columns and ignores standard columns', () => {
+    expect(
+      getMlKeyMetricNamesFromRunColumns([
+        'apiSource',
+        'metric:loss',
+        'accuracy',
+        'tags',
+        'metric:loss',
+      ])
+    ).toEqual(['loss', 'accuracy']);
+  });
+});
+
+describe('getMlRunColumnsWithKeyMetrics', () => {
+  it('preserves standard columns and replaces metric columns', () => {
+    expect(
+      getMlRunColumnsWithKeyMetrics(
+        ['tags', 'metric:loss', 'accuracy', 'apiSource'],
+        ['loss', 'dice', 'loss']
+      )
+    ).toEqual(['tags', 'apiSource', 'metric:loss', 'metric:dice']);
   });
 });

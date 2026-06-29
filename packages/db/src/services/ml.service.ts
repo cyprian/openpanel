@@ -19,6 +19,9 @@ type MlRunUpdateInput = {
   keyMetrics?: string[];
 };
 
+const ML_RUN_COLUMN_METRIC_PREFIX = 'metric:';
+const ML_STANDARD_RUN_COLUMNS = new Set(['apiSource', 'tags']);
+
 export const ML_IMAGE_STORAGE_PROVIDER_LOCAL = 'local';
 export const ML_IMAGE_STORAGE_ROOT =
   process.env.ML_STORAGE_DIR || '/var/lib/openpanel/ml';
@@ -147,7 +150,7 @@ export async function updateMlProject(input: {
     throw new Error('ML project not found');
   }
 
-  return db.mlProject.update({
+  const updatedProject = await db.mlProject.update({
     where: {
       id: input.id,
     },
@@ -157,6 +160,16 @@ export async function updateMlProject(input: {
       runColumns: input.runColumns,
     },
   });
+
+  if (input.runColumns !== undefined) {
+    await syncMlProjectRunKeyMetrics({
+      projectId: input.projectId,
+      mlProjectId: input.id,
+      keyMetrics: getMlKeyMetricNamesFromRunColumns(input.runColumns),
+    });
+  }
+
+  return updatedProject;
 }
 
 export async function archiveMlProject(input: {
@@ -295,6 +308,10 @@ export async function updateMlRun(input: MlRunUpdateInput) {
   if (!run) {
     throw new Error('ML run not found');
   }
+  const keyMetrics =
+    input.keyMetrics === undefined
+      ? undefined
+      : getUniqueStrings(input.keyMetrics);
 
   const endedAt =
     input.status && ['finished', 'failed', 'crashed'].includes(input.status)
@@ -303,7 +320,7 @@ export async function updateMlRun(input: MlRunUpdateInput) {
   const startedAt =
     input.status === 'running' && !run.startedAt ? new Date() : undefined;
 
-  return db.mlRun.update({
+  const updatedRun = await db.mlRun.update({
     where: {
       id: input.id,
     },
@@ -314,7 +331,7 @@ export async function updateMlRun(input: MlRunUpdateInput) {
       tags: input.tags,
       config: input.config,
       metadata: input.metadata,
-      keyMetrics: input.keyMetrics,
+      keyMetrics,
       startedAt,
       endedAt,
       updatedAt: isKeyMetricsOnlyMlRunUpdate(input)
@@ -331,6 +348,115 @@ export async function updateMlRun(input: MlRunUpdateInput) {
       mlProject: true,
     },
   });
+
+  if (keyMetrics !== undefined) {
+    const runColumns = getMlRunColumnsWithKeyMetrics(
+      run.mlProject.runColumns,
+      keyMetrics
+    );
+
+    if (!areStringArraysEqual(runColumns, run.mlProject.runColumns)) {
+      await db.mlProject.update({
+        where: {
+          id: run.mlProjectId,
+        },
+        data: {
+          runColumns,
+        },
+      });
+    }
+
+    await syncMlProjectRunKeyMetrics({
+      projectId: input.projectId,
+      mlProjectId: run.mlProjectId,
+      keyMetrics,
+    });
+  }
+
+  return updatedRun;
+}
+
+export function getMlKeyMetricNamesFromRunColumns(columns: string[]) {
+  const metrics: string[] = [];
+  const seen = new Set<string>();
+
+  for (const column of columns) {
+    const metric = getMlKeyMetricNameFromRunColumn(column);
+
+    if (metric && !seen.has(metric)) {
+      seen.add(metric);
+      metrics.push(metric);
+    }
+  }
+
+  return metrics;
+}
+
+function getMlKeyMetricNameFromRunColumn(column: string) {
+  if (column.startsWith(ML_RUN_COLUMN_METRIC_PREFIX)) {
+    return column.slice(ML_RUN_COLUMN_METRIC_PREFIX.length);
+  }
+
+  return ML_STANDARD_RUN_COLUMNS.has(column) ? '' : column;
+}
+
+export function getMlRunColumnsWithKeyMetrics(
+  columns: string[],
+  keyMetrics: string[]
+) {
+  const standardColumns = columns.filter(
+    (column) =>
+      ML_STANDARD_RUN_COLUMNS.has(column) &&
+      !column.startsWith(ML_RUN_COLUMN_METRIC_PREFIX)
+  );
+  const metricColumns = getUniqueStrings(keyMetrics).map(
+    (metric) => `${ML_RUN_COLUMN_METRIC_PREFIX}${metric}`
+  );
+
+  return [...standardColumns, ...metricColumns];
+}
+
+async function syncMlProjectRunKeyMetrics(input: {
+  projectId: string;
+  mlProjectId: string;
+  keyMetrics: string[];
+}) {
+  const runs = await db.mlRun.findMany({
+    where: {
+      projectId: input.projectId,
+      mlProjectId: input.mlProjectId,
+      archivedAt: null,
+    },
+    select: {
+      id: true,
+      keyMetrics: true,
+      updatedAt: true,
+    },
+  });
+  const keyMetrics = getUniqueStrings(input.keyMetrics);
+  const updates = runs
+    .filter((run) => !areStringArraysEqual(run.keyMetrics, keyMetrics))
+    .map((run) =>
+      db.mlRun.update({
+        where: {
+          id: run.id,
+        },
+        data: {
+          keyMetrics,
+          updatedAt: run.updatedAt,
+        },
+      })
+    );
+
+  await Promise.all(updates);
+}
+
+function getUniqueStrings(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function areStringArraysEqual(a: string[], b: string[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 export async function archiveMlRun(input: {

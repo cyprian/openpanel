@@ -108,6 +108,8 @@ function MlProjectRunsIndex() {
       onSettled() {
         queryClient.invalidateQueries(trpc.ml.project.pathFilter());
         queryClient.invalidateQueries(trpc.ml.projects.pathFilter());
+        queryClient.invalidateQueries(trpc.ml.run.pathFilter());
+        queryClient.invalidateQueries(trpc.ml.runs.pathFilter());
       },
     })
   );

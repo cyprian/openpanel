@@ -67,6 +67,8 @@ const KEY_METRIC_COLORS = [
   '#db2777',
   '#4f46e5',
 ];
+const ML_RUN_COLUMN_METRIC_PREFIX = 'metric:';
+const ML_STANDARD_RUN_COLUMNS = new Set(['apiSource', 'tags']);
 
 export function MlRunDetail({
   organizationId,
@@ -104,6 +106,8 @@ export function MlRunDetail({
       onSettled() {
         queryClient.invalidateQueries(trpc.ml.run.pathFilter());
         queryClient.invalidateQueries(trpc.ml.runs.pathFilter());
+        queryClient.invalidateQueries(trpc.ml.project.pathFilter());
+        queryClient.invalidateQueries(trpc.ml.projects.pathFilter());
       },
     })
   );
@@ -166,8 +170,13 @@ export function MlRunDetail({
   const hasEvaluationRows = (evaluationSummary.data?.total ?? 0) > 0;
 
   useEffect(() => {
-    setSelectedKeyMetrics(run.data?.keyMetrics ?? []);
-  }, [run.data?.keyMetrics]);
+    setSelectedKeyMetrics(
+      getSyncedKeyMetrics(
+        run.data?.keyMetrics ?? [],
+        run.data?.mlProject.runColumns ?? []
+      )
+    );
+  }, [run.data?.keyMetrics, run.data?.mlProject.runColumns]);
 
   const updateKeyMetrics = (metrics: string[]) => {
     setSelectedKeyMetrics(metrics);
@@ -955,6 +964,34 @@ function getNumericMetric(value: unknown, key: string) {
 
 function formatMetricValue(value: number | null) {
   return typeof value === 'number' ? formatNumber(value) : '-';
+}
+
+function getSyncedKeyMetrics(keyMetrics: string[], runColumns: string[]) {
+  return getUniqueStrings([
+    ...getProjectKeyMetricsFromRunColumns(runColumns),
+    ...keyMetrics,
+  ]);
+}
+
+function getProjectKeyMetricsFromRunColumns(runColumns: string[]) {
+  const metrics: string[] = [];
+
+  for (const column of runColumns) {
+    if (column.startsWith(ML_RUN_COLUMN_METRIC_PREFIX)) {
+      metrics.push(column.slice(ML_RUN_COLUMN_METRIC_PREFIX.length));
+      continue;
+    }
+
+    if (!ML_STANDARD_RUN_COLUMNS.has(column)) {
+      metrics.push(column);
+    }
+  }
+
+  return metrics;
+}
+
+function getUniqueStrings(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function getKeyMetricColor(index: number) {
