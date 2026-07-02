@@ -1146,7 +1146,7 @@ function EvaluationImageDialog({
         ) : (
           <img
             alt={imageLabel}
-            className="max-w-none"
+            className="block h-auto max-h-[calc(100vh-10rem)] max-w-full"
             height={image.height ?? undefined}
             src={image.dataUrl}
             width={image.width ?? undefined}
@@ -1185,7 +1185,7 @@ function EvaluationImageDialog({
           </Select>
         </div>
       )}
-      {image.caption && image.caption !== image.filename && (
+      {!compareImage && image.caption && image.caption !== image.filename && (
         <div className="max-w-[calc(100vw-2rem)] text-muted-foreground text-sm">
           {image.caption}
         </div>
@@ -1209,10 +1209,10 @@ function ImageComparisonSlider({
   const compareImageLabel = getImageLabel(compareImage);
 
   return (
-    <div className="relative inline-block overflow-hidden">
+    <div className="relative inline-block max-w-full overflow-hidden">
       <img
         alt={compareImageLabel}
-        className="block max-w-none select-none"
+        className="block h-auto max-h-[calc(100vh-10rem)] max-w-full select-none"
         draggable={false}
         height={image.height ?? undefined}
         src={compareImage.dataUrl}
@@ -1224,19 +1224,23 @@ function ImageComparisonSlider({
       >
         <img
           alt={imageLabel}
-          className="block max-w-none select-none"
+          className="absolute inset-0 h-full w-full select-none object-contain"
           draggable={false}
-          height={image.height ?? undefined}
           src={image.dataUrl}
-          width={image.width ?? undefined}
         />
+      </div>
+      <div className="pointer-events-none absolute top-2 left-2 rounded bg-black px-2 py-1 font-medium text-white text-xs shadow">
+        {image.name}
+      </div>
+      <div className="pointer-events-none absolute top-2 right-2 rounded bg-black px-2 py-1 font-medium text-white text-xs shadow">
+        {compareImage.name}
       </div>
       <div
         aria-hidden="true"
         className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.45)]"
         style={{ left: `${position}%` }}
       >
-        <div className="center-center absolute top-1/2 left-1/2 size-8 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-black/60 shadow">
+        <div className="center-center absolute top-1/2 left-1/2 size-8 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-black shadow">
           <ArrowLeftRightIcon className="size-4 text-white" />
         </div>
       </div>
