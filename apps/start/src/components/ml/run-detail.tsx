@@ -66,6 +66,7 @@ import {
 } from 'recharts';
 
 const ML_CHART_BLUE = '#2563eb';
+const NO_COMPARE_VALUE = '__none__';
 const KEY_METRIC_COLORS = [
   '#16a34a',
   '#9333ea',
@@ -1011,7 +1012,14 @@ function EvaluationTable({
 
                       return (
                         <TableCell key={name}>
-                          <EvaluationImageThumb images={images} />
+                          <EvaluationImageThumb
+                            compareImages={getComparableImages(
+                              row.images,
+                              imageColumnNames,
+                              images[0]?.id
+                            )}
+                            images={images}
+                          />
                         </TableCell>
                       );
                     })}
@@ -1052,31 +1060,195 @@ function EvaluationTable({
   );
 }
 
-function EvaluationImageThumb({ images }: { images: MlRunImage[] }) {
+function EvaluationImageThumb({
+  compareImages,
+  images,
+}: {
+  compareImages: MlRunImage[];
+  images: MlRunImage[];
+}) {
   const image = images[0];
   if (!image) {
     return <span className="text-muted-foreground text-xs">-</span>;
   }
 
+  const imageLabel = getImageLabel(image);
+
   return (
-    <div className="relative h-16 w-20 overflow-hidden rounded-md border bg-def-100">
-      {image.dataUrl ? (
+    <Dialog>
+      <DialogTrigger asChild disabled={!image.dataUrl}>
+        <button
+          aria-label={`View ${imageLabel}`}
+          className="relative h-16 w-20 overflow-hidden rounded-md border bg-def-100 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+          disabled={!image.dataUrl}
+          type="button"
+        >
+          {image.dataUrl ? (
+            <img
+              alt={imageLabel}
+              className="h-full w-full object-contain"
+              src={image.dataUrl}
+              title={imageLabel}
+            />
+          ) : (
+            <span className="center-center h-full text-muted-foreground text-xs">
+              Missing
+            </span>
+          )}
+          {images.length > 1 && (
+            <span className="absolute right-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 font-medium text-[10px] shadow">
+              +{images.length - 1}
+            </span>
+          )}
+        </button>
+      </DialogTrigger>
+      {image.dataUrl && (
+        <EvaluationImageDialog compareImages={compareImages} image={image} />
+      )}
+    </Dialog>
+  );
+}
+
+function EvaluationImageDialog({
+  compareImages,
+  image,
+}: {
+  compareImages: MlRunImage[];
+  image: MlRunImage;
+}) {
+  const [compareImageId, setCompareImageId] = useState(NO_COMPARE_VALUE);
+  const [comparePosition, setComparePosition] = useState(50);
+  const imageLabel = getImageLabel(image);
+  const compareImage = compareImages.find((item) => item.id === compareImageId);
+  const dimensions =
+    image.width && image.height ? `${image.width} x ${image.height}` : null;
+
+  return (
+    <DialogContent
+      className="w-auto max-w-[calc(100vw-2rem)] gap-3 p-4"
+      showCloseButton
+    >
+      <DialogHeader className="pr-8">
+        <DialogTitle className="truncate text-base">{imageLabel}</DialogTitle>
+        <div className="text-muted-foreground text-xs">
+          {dimensions ?? 'Original image'}
+        </div>
+      </DialogHeader>
+      <div className="max-h-[calc(100vh-10rem)] max-w-[calc(100vw-4rem)] overflow-auto rounded-md border bg-def-100">
+        {compareImage ? (
+          <ImageComparisonSlider
+            compareImage={compareImage}
+            image={image}
+            onPositionChange={setComparePosition}
+            position={comparePosition}
+          />
+        ) : (
+          <img
+            alt={imageLabel}
+            className="max-w-none"
+            height={image.height ?? undefined}
+            src={image.dataUrl}
+            width={image.width ?? undefined}
+          />
+        )}
+      </div>
+      {compareImages.length > 0 && (
+        <div className="grid gap-1.5">
+          <label
+            className="font-medium text-muted-foreground text-xs"
+            htmlFor={`compare-${image.id}`}
+          >
+            Compare
+          </label>
+          <Select
+            onValueChange={(value) => {
+              setCompareImageId(value);
+              setComparePosition(50);
+            }}
+            value={compareImageId}
+          >
+            <SelectTrigger
+              className="w-full sm:w-64"
+              id={`compare-${image.id}`}
+            >
+              <SelectValue placeholder="Select image" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_COMPARE_VALUE}>None</SelectItem>
+              {compareImages.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {image.caption && image.caption !== image.filename && (
+        <div className="max-w-[calc(100vw-4rem)] text-muted-foreground text-sm">
+          {image.caption}
+        </div>
+      )}
+    </DialogContent>
+  );
+}
+
+function ImageComparisonSlider({
+  compareImage,
+  image,
+  onPositionChange,
+  position,
+}: {
+  compareImage: MlRunImage;
+  image: MlRunImage;
+  onPositionChange: (value: number) => void;
+  position: number;
+}) {
+  const imageLabel = getImageLabel(image);
+  const compareImageLabel = getImageLabel(compareImage);
+
+  return (
+    <div className="relative inline-block overflow-hidden">
+      <img
+        alt={compareImageLabel}
+        className="block max-w-none select-none"
+        draggable={false}
+        height={image.height ?? undefined}
+        src={compareImage.dataUrl}
+        width={image.width ?? undefined}
+      />
+      <div
+        className="absolute inset-0 overflow-hidden"
+        style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}
+      >
         <img
-          alt={image.caption || image.filename}
-          className="h-full w-full object-contain"
+          alt={imageLabel}
+          className="block max-w-none select-none"
+          draggable={false}
+          height={image.height ?? undefined}
           src={image.dataUrl}
-          title={image.caption || image.filename}
+          width={image.width ?? undefined}
         />
-      ) : (
-        <div className="center-center h-full text-muted-foreground text-xs">
-          Missing
+      </div>
+      <div
+        aria-hidden="true"
+        className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.45)]"
+        style={{ left: `${position}%` }}
+      >
+        <div className="absolute top-1/2 left-1/2 size-8 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background shadow">
+          <div className="absolute top-1/2 left-2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l" />
+          <div className="absolute top-1/2 right-2 h-2 w-2 -translate-y-1/2 rotate-45 border-t border-r" />
         </div>
-      )}
-      {images.length > 1 && (
-        <div className="absolute right-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 font-medium text-[10px] shadow">
-          +{images.length - 1}
-        </div>
-      )}
+      </div>
+      <input
+        aria-label={`Compare ${imageLabel} with ${compareImageLabel}`}
+        className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
+        max="100"
+        min="0"
+        onChange={(event) => onPositionChange(Number(event.target.value))}
+        type="range"
+        value={position}
+      />
     </div>
   );
 }
@@ -1396,4 +1568,30 @@ function getOrderedImageNames(images: MlRunImage[]) {
   }
 
   return [...names];
+}
+
+function getComparableImages(
+  images: MlRunImage[],
+  imageColumnNames: string[],
+  currentImageId?: string
+) {
+  const imagesByName = new Map<string, MlRunImage>();
+  for (const image of images) {
+    if (!image.dataUrl || image.id === currentImageId) {
+      continue;
+    }
+
+    if (!imagesByName.has(image.name)) {
+      imagesByName.set(image.name, image);
+    }
+  }
+
+  return imageColumnNames.flatMap((name) => {
+    const image = imagesByName.get(name);
+    return image ? [image] : [];
+  });
+}
+
+function getImageLabel(image: MlRunImage) {
+  return image.caption || image.filename || image.name;
 }
