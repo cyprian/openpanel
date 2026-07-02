@@ -45,7 +45,7 @@ import {
   SearchIcon,
   TrashIcon,
 } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 
 const RUN_COLUMN_API_SOURCE = 'apiSource';
@@ -95,6 +95,7 @@ function MlProjectRunsIndex() {
   const [selectedRunColumns, setSelectedRunColumns] = useState<string[]>([]);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [runSort, setRunSort] = useState<RunSort | null>(null);
+  const lastAutoSyncedRunColumnsKey = useRef<string | null>(null);
   const project = useQuery(
     trpc.ml.project.queryOptions({ projectId, id: mlProjectId })
   );
@@ -134,10 +135,24 @@ function MlProjectRunsIndex() {
       },
     })
   );
+  const savedRunColumns = useMemo(
+    () => normalizeSavedRunColumns(project.data?.runColumns),
+    [project.data?.runColumns]
+  );
   const availableMetricColumns = useMemo(
     () => getAvailableMetricColumns(runs.data ?? []),
     [runs.data]
   );
+  const syncedRunColumns = useMemo(
+    () =>
+      getRunColumnsWithAddedKeyMetrics(
+        savedRunColumns,
+        getKeyMetricsFromRuns(runs.data ?? [])
+      ),
+    [runs.data, savedRunColumns]
+  );
+  const savedRunColumnsKey = savedRunColumns.join('\u0000');
+  const syncedRunColumnsKey = syncedRunColumns.join('\u0000');
   const visibleMetricColumns = availableMetricColumns.filter((metric) =>
     selectedRunColumns.includes(getMetricColumnId(metric))
   );
@@ -183,8 +198,41 @@ function MlProjectRunsIndex() {
   };
 
   useEffect(() => {
-    setSelectedRunColumns(normalizeSavedRunColumns(project.data?.runColumns));
-  }, [project.data?.runColumns]);
+    if (updateProject.isPending) {
+      return;
+    }
+
+    setSelectedRunColumns((current) =>
+      areStringArraysEqual(current, syncedRunColumns)
+        ? current
+        : syncedRunColumns
+    );
+
+    if (savedRunColumnsKey === syncedRunColumnsKey) {
+      lastAutoSyncedRunColumnsKey.current = null;
+      return;
+    }
+
+    if (
+      project.data &&
+      lastAutoSyncedRunColumnsKey.current !== syncedRunColumnsKey
+    ) {
+      lastAutoSyncedRunColumnsKey.current = syncedRunColumnsKey;
+      updateProject.mutate({
+        id: mlProjectId,
+        projectId,
+        runColumns: syncedRunColumns,
+      });
+    }
+  }, [
+    mlProjectId,
+    project.data,
+    projectId,
+    savedRunColumnsKey,
+    syncedRunColumns,
+    syncedRunColumnsKey,
+    updateProject,
+  ]);
 
   useEffect(() => {
     const availableRunIds = new Set((runs.data ?? []).map((run) => run.id));
@@ -623,9 +671,15 @@ function RunColumnCheckbox({
   );
 }
 
-function getAvailableMetricColumns(runs: Array<{ summary: unknown }>) {
+function getAvailableMetricColumns(
+  runs: Array<{ keyMetrics?: string[]; summary: unknown }>
+) {
   const columns = new Set<string>();
   for (const run of runs) {
+    for (const metric of run.keyMetrics ?? []) {
+      columns.add(metric);
+    }
+
     for (const metric of Object.keys(normalizeNumberRecord(run.summary))) {
       columns.add(metric);
     }
@@ -640,6 +694,28 @@ function getMetricColumnId(metric: string) {
 
 function getMetricNameFromColumnId(columnId: string) {
   return columnId.slice('metric:'.length);
+}
+
+function getKeyMetricsFromRuns(runs: Array<{ keyMetrics?: string[] }>) {
+  return getUniqueStrings(runs.flatMap((run) => run.keyMetrics ?? []));
+}
+
+function getRunColumnsWithAddedKeyMetrics(
+  columns: string[],
+  keyMetrics: string[]
+) {
+  const existingMetricNames = new Set(
+    columns
+      .map((column) =>
+        column.startsWith('metric:') ? getMetricNameFromColumnId(column) : ''
+      )
+      .filter(Boolean)
+  );
+  const addedMetricColumns = keyMetrics
+    .filter((metric) => !existingMetricNames.has(metric))
+    .map(getMetricColumnId);
+
+  return getUniqueStrings([...columns, ...addedMetricColumns]);
 }
 
 function getRunSortValue(
@@ -718,6 +794,14 @@ function normalizeSavedRunColumns(columns: string[] | undefined) {
       ? column
       : getMetricColumnId(column)
   );
+}
+
+function getUniqueStrings(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function areStringArraysEqual(a: string[], b: string[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 function getRunTableColumnCount({
