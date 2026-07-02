@@ -54,7 +54,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CartesianGrid,
   Line,
@@ -1185,11 +1185,6 @@ function EvaluationImageDialog({
           </Select>
         </div>
       )}
-      {!compareImage && image.caption && image.caption !== image.filename && (
-        <div className="max-w-[calc(100vw-2rem)] text-muted-foreground text-sm">
-          {image.caption}
-        </div>
-      )}
     </DialogContent>
   );
 }
@@ -1205,11 +1200,59 @@ function ImageComparisonSlider({
   onPositionChange: (value: number) => void;
   position: number;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const imageLabel = getImageLabel(image);
   const compareImageLabel = getImageLabel(compareImage);
+  const setPositionFromClientX = (clientX: number) => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const value = ((clientX - rect.left) / rect.width) * 100;
+    onPositionChange(Math.min(Math.max(value, 0), 100));
+  };
 
   return (
-    <div className="relative inline-block max-w-full overflow-hidden">
+    <div
+      aria-label={`Compare ${imageLabel} with ${compareImageLabel}`}
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={Math.round(position)}
+      className="relative inline-block max-w-full cursor-ew-resize touch-none overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          onPositionChange(Math.max(position - 5, 0));
+        }
+
+        if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          onPositionChange(Math.min(position + 5, 100));
+        }
+      }}
+      onPointerDown={(event) => {
+        event.currentTarget.focus();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setPositionFromClientX(event.clientX);
+      }}
+      onPointerMove={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+          return;
+        }
+
+        setPositionFromClientX(event.clientX);
+      }}
+      onPointerUp={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+      }}
+      ref={containerRef}
+      role="slider"
+      tabIndex={0}
+    >
       <img
         alt={compareImageLabel}
         className="block h-auto max-h-[calc(100vh-10rem)] max-w-full select-none"
@@ -1244,15 +1287,6 @@ function ImageComparisonSlider({
           <ArrowLeftRightIcon className="size-4 text-white" />
         </div>
       </div>
-      <input
-        aria-label={`Compare ${imageLabel} with ${compareImageLabel}`}
-        className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
-        max="100"
-        min="0"
-        onChange={(event) => onPositionChange(Number(event.target.value))}
-        type="range"
-        value={position}
-      />
     </div>
   );
 }
