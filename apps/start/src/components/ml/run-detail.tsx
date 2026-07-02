@@ -45,6 +45,7 @@ import {
 import { Link, useNavigate } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import {
+  ArrowLeftRightIcon,
   ArrowLeftIcon,
   BracesIcon,
   DatabaseIcon,
@@ -1125,7 +1126,7 @@ function EvaluationImageDialog({
 
   return (
     <DialogContent
-      className="w-auto max-w-[calc(100vw-2rem)] gap-3 p-4"
+      className="w-fit max-w-[calc(100vw-0.75rem)] gap-3 p-3 sm:p-4"
       showCloseButton
     >
       <DialogHeader className="pr-8">
@@ -1134,7 +1135,7 @@ function EvaluationImageDialog({
           {dimensions ?? 'Original image'}
         </div>
       </DialogHeader>
-      <div className="max-h-[calc(100vh-10rem)] max-w-[calc(100vw-4rem)] overflow-auto rounded-md border bg-def-100">
+      <div className="max-h-[calc(100vh-10rem)] max-w-[calc(100vw-2rem)] overflow-auto rounded-md border bg-def-100">
         {compareImage ? (
           <ImageComparisonSlider
             compareImage={compareImage}
@@ -1185,7 +1186,7 @@ function EvaluationImageDialog({
         </div>
       )}
       {image.caption && image.caption !== image.filename && (
-        <div className="max-w-[calc(100vw-4rem)] text-muted-foreground text-sm">
+        <div className="max-w-[calc(100vw-2rem)] text-muted-foreground text-sm">
           {image.caption}
         </div>
       )}
@@ -1235,9 +1236,8 @@ function ImageComparisonSlider({
         className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.45)]"
         style={{ left: `${position}%` }}
       >
-        <div className="absolute top-1/2 left-1/2 size-8 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background shadow">
-          <div className="absolute top-1/2 left-2 h-2 w-2 -translate-y-1/2 rotate-45 border-b border-l" />
-          <div className="absolute top-1/2 right-2 h-2 w-2 -translate-y-1/2 rotate-45 border-t border-r" />
+        <div className="center-center absolute top-1/2 left-1/2 size-8 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-black/60 shadow">
+          <ArrowLeftRightIcon className="size-4 text-white" />
         </div>
       </div>
       <input
