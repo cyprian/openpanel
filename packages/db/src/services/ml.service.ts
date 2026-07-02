@@ -9,6 +9,8 @@ import {
 } from '../clickhouse/client';
 import { db } from '../prisma-client';
 import { mlMetricBuffer } from '../buffers';
+import { createEvent } from './event.service';
+import { checkNotificationRulesForEvent } from './notification.service';
 
 export type MlRunSummary = Record<string, number>;
 
@@ -26,6 +28,31 @@ type MlRunUpdateInput = {
 
 const ML_RUN_COLUMN_METRIC_PREFIX = 'metric:';
 const ML_STANDARD_RUN_COLUMNS = new Set(['apiSource', 'tags']);
+const LOWER_IS_BETTER_ML_METRIC_PATTERNS = [
+  /(^|[_\s/.-])loss($|[_\s/.-])/i,
+  /(^|[_\s/.-])error($|[_\s/.-])/i,
+  /(^|[_\s/.-])err($|[_\s/.-])/i,
+  /(^|[_\s/.-])mae($|[_\s/.-])/i,
+  /(^|[_\s/.-])mse($|[_\s/.-])/i,
+  /(^|[_\s/.-])rmse($|[_\s/.-])/i,
+  /(^|[_\s/.-])mape($|[_\s/.-])/i,
+  /(^|[_\s/.-])nll($|[_\s/.-])/i,
+  /(^|[_\s/.-])perplexity($|[_\s/.-])/i,
+  /(^|[_\s/.-])ppl($|[_\s/.-])/i,
+  /(^|[_\s/.-])wer($|[_\s/.-])/i,
+  /(^|[_\s/.-])cer($|[_\s/.-])/i,
+  /(^|[_\s/.-])latency($|[_\s/.-])/i,
+  /(^|[_\s/.-])duration($|[_\s/.-])/i,
+  /(^|[_\s/.-])time($|[_\s/.-])/i,
+  /(^|[_\s/.-])cost($|[_\s/.-])/i,
+];
+
+export const ML_RUN_KEY_METRIC_IMPROVED_EVENT =
+  'ml_run_key_metric_improved';
+export const ML_RUN_CREATED_EVENT = 'ml_run_created';
+export const ML_RUN_STARTED_EVENT = 'ml_run_started';
+export const ML_RUN_FINISHED_EVENT = 'ml_run_finished';
+export const ML_RUN_ERROR_EVENT = 'ml_run_error';
 
 export const ML_IMAGE_STORAGE_PROVIDER_LOCAL = 'local';
 export const ML_IMAGE_STORAGE_ROOT =
@@ -341,10 +368,31 @@ export async function createMlRun(input: {
     },
     select: {
       organizationId: true,
+      name: true,
+      runColumns: true,
     },
   });
+  const keyMetrics = getUniqueStrings(input.keyMetrics ?? []);
 
-  return db.mlRun.create({
+  if (keyMetrics.length > 0) {
+    const runColumns = getMlRunColumnsWithAddedKeyMetrics(
+      mlProject.runColumns,
+      keyMetrics
+    );
+
+    if (!areStringArraysEqual(runColumns, mlProject.runColumns)) {
+      await db.mlProject.update({
+        where: {
+          id: input.mlProjectId,
+        },
+        data: {
+          runColumns,
+        },
+      });
+    }
+  }
+
+  const run = await db.mlRun.create({
     data: {
       projectId: input.projectId,
       organizationId: mlProject.organizationId,
@@ -357,7 +405,7 @@ export async function createMlRun(input: {
       tags: getMlRunTags(input.tags, input.metadata),
       config: input.config ?? {},
       metadata: input.metadata ?? {},
-      keyMetrics: input.keyMetrics ?? [],
+      keyMetrics,
       summary: {},
     },
     include: {
@@ -370,6 +418,19 @@ export async function createMlRun(input: {
       mlProject: true,
     },
   });
+
+  await emitMlRunStatusEvent({
+    projectId: input.projectId,
+    mlProjectId: input.mlProjectId,
+    mlProjectName: mlProject.name,
+    runId: run.id,
+    runName: run.name,
+    status: run.status,
+    previousStatus: null,
+    createdAt: getMlRunStatusEventCreatedAt(run),
+  }).catch(() => null);
+
+  return run;
 }
 
 export function getMlRunTags(
@@ -485,6 +546,19 @@ export async function updateMlRun(input: MlRunUpdateInput) {
     });
   }
 
+  if (input.status && input.status !== run.status) {
+    await emitMlRunStatusEvent({
+      projectId: input.projectId,
+      mlProjectId: run.mlProjectId,
+      mlProjectName: run.mlProject.name,
+      runId: run.id,
+      runName: updatedRun.name,
+      status: input.status,
+      previousStatus: run.status,
+      createdAt: getMlRunStatusEventCreatedAt(updatedRun),
+    }).catch(() => null);
+  }
+
   return updatedRun;
 }
 
@@ -526,6 +600,20 @@ export function getMlRunColumnsWithKeyMetrics(
   );
 
   return [...standardColumns, ...metricColumns];
+}
+
+export function getMlRunColumnsWithAddedKeyMetrics(
+  columns: string[],
+  keyMetrics: string[]
+) {
+  const existingMetricNames = new Set(
+    columns.map(getMlKeyMetricNameFromRunColumn).filter(Boolean)
+  );
+  const addedMetricColumns = getUniqueStrings(keyMetrics)
+    .filter((metric) => !existingMetricNames.has(metric))
+    .map((metric) => `${ML_RUN_COLUMN_METRIC_PREFIX}${metric}`);
+
+  return [...columns, ...addedMetricColumns];
 }
 
 async function syncMlProjectRunKeyMetrics(input: {
@@ -663,20 +751,33 @@ export async function logMlMetrics(input: {
     select: {
       id: true,
       mlProjectId: true,
+      name: true,
+      keyMetrics: true,
       summary: true,
       status: true,
       startedAt: true,
+      mlProject: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
   if (!run) {
     throw new Error('ML run not found');
   }
 
+  const previousSummary = (run.summary ?? {}) as MlRunSummary;
   const summary = {
-    ...((run.summary ?? {}) as MlRunSummary),
+    ...previousSummary,
     ...input.metrics,
   };
   const step = input.step ?? Date.now();
+  const improvedKeyMetrics = getImprovedMlRunKeyMetrics({
+    keyMetrics: run.keyMetrics,
+    previousSummary,
+    metrics: input.metrics,
+  });
 
   await Promise.all([
     mlMetricBuffer.bulkAdd(
@@ -701,12 +802,230 @@ export async function logMlMetrics(input: {
         startedAt: run.startedAt ?? new Date(),
       },
     }),
+    emitMlRunKeyMetricImprovedEvents({
+      projectId: input.projectId,
+      mlProjectId: run.mlProjectId,
+      mlProjectName: run.mlProject.name,
+      runId: input.runId,
+      runName: run.name,
+      improvedKeyMetrics,
+      step,
+      epoch: input.epoch,
+      createdAt: input.createdAt,
+    }).catch(() => null),
+    run.status === 'created'
+      ? emitMlRunStatusEvent({
+          projectId: input.projectId,
+          mlProjectId: run.mlProjectId,
+          mlProjectName: run.mlProject.name,
+          runId: input.runId,
+          runName: run.name,
+          status: 'running',
+          previousStatus: run.status,
+          createdAt: input.createdAt,
+        }).catch(() => null)
+      : Promise.resolve(),
   ]);
 
   return {
     accepted: Object.keys(input.metrics).length,
     step,
   };
+}
+
+export type MlMetricImprovementDirection = 'higher' | 'lower';
+
+export function getMlMetricImprovementDirection(
+  metric: string
+): MlMetricImprovementDirection {
+  return LOWER_IS_BETTER_ML_METRIC_PATTERNS.some((pattern) =>
+    pattern.test(metric)
+  )
+    ? 'lower'
+    : 'higher';
+}
+
+export function hasMlMetricImproved(input: {
+  metric: string;
+  previousValue: number;
+  value: number;
+}) {
+  if (!Number.isFinite(input.previousValue) || !Number.isFinite(input.value)) {
+    return false;
+  }
+
+  const direction = getMlMetricImprovementDirection(input.metric);
+  return direction === 'lower'
+    ? input.value < input.previousValue
+    : input.value > input.previousValue;
+}
+
+function getImprovedMlRunKeyMetrics(input: {
+  keyMetrics: string[];
+  previousSummary: MlRunSummary;
+  metrics: Record<string, number>;
+}) {
+  const keyMetrics = new Set(input.keyMetrics);
+
+  return Object.entries(input.metrics).flatMap(([metric, value]) => {
+    if (!keyMetrics.has(metric)) {
+      return [];
+    }
+
+    const previousValue = input.previousSummary[metric];
+    if (
+      typeof previousValue !== 'number' ||
+      !hasMlMetricImproved({ metric, previousValue, value })
+    ) {
+      return [];
+    }
+
+    const direction = getMlMetricImprovementDirection(metric);
+    const improvement =
+      direction === 'lower' ? previousValue - value : value - previousValue;
+    const relativeImprovement =
+      previousValue === 0 ? null : improvement / Math.abs(previousValue);
+
+    return [
+      {
+        metric,
+        value,
+        previousValue,
+        direction,
+        improvement,
+        relativeImprovement,
+      },
+    ];
+  });
+}
+
+async function emitMlRunKeyMetricImprovedEvents(input: {
+  projectId: string;
+  mlProjectId: string;
+  mlProjectName: string;
+  runId: string;
+  runName: string;
+  improvedKeyMetrics: ReturnType<typeof getImprovedMlRunKeyMetrics>;
+  step: number;
+  epoch?: number | null;
+  createdAt?: Date;
+}) {
+  const createdAt = input.createdAt ?? new Date();
+
+  await Promise.all(
+    input.improvedKeyMetrics.map(async (metric) => {
+      const payload = {
+        name: ML_RUN_KEY_METRIC_IMPROVED_EVENT,
+        deviceId: `ml-run:${input.runId}`,
+        profileId: `ml-run:${input.runId}`,
+        projectId: input.projectId,
+        sessionId: `ml-run:${input.runId}`,
+        path: '',
+        origin: '',
+        referrer: undefined,
+        referrerName: undefined,
+        referrerType: undefined,
+        createdAt,
+        properties: {
+          ml_project_id: input.mlProjectId,
+          ml_project_name: input.mlProjectName,
+          ml_run_id: input.runId,
+          ml_run_name: input.runName,
+          metric: metric.metric,
+          value: metric.value,
+          previous_value: metric.previousValue,
+          improvement: metric.improvement,
+          relative_improvement: metric.relativeImprovement,
+          improvement_direction: metric.direction,
+          step: input.step,
+          epoch: input.epoch ?? null,
+        },
+        sdkName: 'openpanel-ml',
+        sdkVersion: undefined,
+        groups: [],
+      };
+
+      await Promise.all([
+        createEvent(payload),
+        checkNotificationRulesForEvent(payload).catch(() => null),
+      ]);
+    })
+  );
+}
+
+function getMlRunStatusEventName(status: string) {
+  switch (status) {
+    case 'created':
+      return ML_RUN_CREATED_EVENT;
+    case 'running':
+      return ML_RUN_STARTED_EVENT;
+    case 'finished':
+      return ML_RUN_FINISHED_EVENT;
+    case 'failed':
+    case 'crashed':
+      return ML_RUN_ERROR_EVENT;
+    default:
+      return `ml_run_${status}`;
+  }
+}
+
+function getMlRunStatusEventCreatedAt(run: {
+  status: string;
+  startedAt?: Date | null;
+  endedAt?: Date | null;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
+}) {
+  if (run.status === 'running' && run.startedAt) {
+    return run.startedAt;
+  }
+
+  if (['finished', 'failed', 'crashed'].includes(run.status) && run.endedAt) {
+    return run.endedAt;
+  }
+
+  return run.updatedAt ?? run.createdAt ?? new Date();
+}
+
+async function emitMlRunStatusEvent(input: {
+  projectId: string;
+  mlProjectId: string;
+  mlProjectName: string;
+  runId: string;
+  runName: string;
+  status: string;
+  previousStatus: string | null;
+  createdAt?: Date | null;
+}) {
+  const payload = {
+    name: getMlRunStatusEventName(input.status),
+    deviceId: `ml-run:${input.runId}`,
+    profileId: `ml-run:${input.runId}`,
+    projectId: input.projectId,
+    sessionId: `ml-run:${input.runId}`,
+    path: '',
+    origin: '',
+    referrer: undefined,
+    referrerName: undefined,
+    referrerType: undefined,
+    createdAt: input.createdAt ?? new Date(),
+    properties: {
+      ml_project_id: input.mlProjectId,
+      ml_project_name: input.mlProjectName,
+      ml_run_id: input.runId,
+      ml_run_name: input.runName,
+      status: input.status,
+      previous_status: input.previousStatus,
+    },
+    sdkName: 'openpanel-ml',
+    sdkVersion: undefined,
+    groups: [],
+  };
+
+  await Promise.all([
+    createEvent(payload),
+    checkNotificationRulesForEvent(payload).catch(() => null),
+  ]);
 }
 
 export async function getMlMetricNames(input: {
