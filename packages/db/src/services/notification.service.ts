@@ -13,6 +13,7 @@ import type {
   IServiceCreateEventPayload,
   IServiceEvent,
 } from './event.service';
+import { formatNotificationTemplateValue } from './notification-template.service';
 import { getProfileById } from './profile.service';
 import { getProjectByIdCached } from './project.service';
 
@@ -269,10 +270,10 @@ function notificationTemplateEvent({
     const path = match.slice(2, -2); // Remove {{ and }}
     const value = pathOr('', path.split('.'), payload);
 
-    if (value) {
+    if (value !== '' && value !== null && value !== undefined) {
       template = template.replaceAll(
         match,
-        typeof value === 'object' ? JSON.stringify(value) : value
+        formatNotificationTemplateValue(value)
       );
     }
   }
