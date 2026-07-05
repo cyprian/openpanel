@@ -8,21 +8,27 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Widget, WidgetBody, WidgetHead } from '@/components/widget';
 import { handleError, useTRPC } from '@/integrations/trpc/react';
+import { cn } from '@/utils/cn';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { IServiceProjectWithClients } from '@openpanel/db';
 import { zProject } from '@openpanel/validation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { SaveIcon } from 'lucide-react';
-import { useState } from 'react';
+import { ImageIcon, SaveIcon, TrashIcon, UploadIcon } from 'lucide-react';
+import type { ChangeEvent } from 'react';
+import { useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
 
 type Props = { project: IServiceProjectWithClients };
+const DEFAULT_LOGO_SRC = '/logo.png';
+const MAX_LOGO_BYTES = 384 * 1024;
+const SUPPORTED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 
 const validator = zProject.pick({
   name: true,
   id: true,
+  logo: true,
   domain: true,
   cors: true,
   crossDomain: true,
@@ -33,11 +39,13 @@ type IForm = z.infer<typeof validator>;
 
 export default function EditProjectDetails({ project }: Props) {
   const [hasDomain, setHasDomain] = useState(project.domain !== null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const form = useForm<IForm>({
     resolver: zodResolver(validator),
     defaultValues: {
       id: project.id,
       name: project.name,
+      logo: project.logo,
       domain: project.domain,
       cors: project.cors,
       crossDomain: project.crossDomain,
@@ -93,6 +101,63 @@ export default function EditProjectDetails({ project }: Props) {
     mutation.mutate(hasDomain ? values : { ...values, cors: [], domain: null });
   };
 
+  const logo = form.watch('logo');
+  const logoError = form.formState.errors.logo?.message;
+
+  const onLogoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    if (
+      !SUPPORTED_LOGO_TYPES.includes(
+        file.type as (typeof SUPPORTED_LOGO_TYPES)[number],
+      )
+    ) {
+      form.setError('logo', {
+        type: 'validate',
+        message: 'Use a PNG, JPG, or WebP image.',
+      });
+      return;
+    }
+
+    if (file.size > MAX_LOGO_BYTES) {
+      form.setError('logo', {
+        type: 'max',
+        message: 'Logo must be 384 KB or smaller.',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        form.setError('logo', {
+          type: 'validate',
+          message: 'Could not read the selected image.',
+        });
+        return;
+      }
+
+      form.clearErrors('logo');
+      form.setValue('logo', reader.result, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+    };
+    reader.onerror = () => {
+      form.setError('logo', {
+        type: 'validate',
+        message: 'Could not read the selected image.',
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <Widget className="max-w-screen-md w-full">
       <WidgetHead>
@@ -105,6 +170,54 @@ export default function EditProjectDetails({ project }: Props) {
             {...form.register('name')}
             defaultValue={project.name}
           />
+
+          <WithLabel label="Logo" error={logoError}>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="center-center size-16 shrink-0 rounded-md border border-border bg-def-100">
+                <img
+                  src={logo || DEFAULT_LOGO_SRC}
+                  className={cn(
+                    'max-h-12 max-w-12 rounded-md',
+                    !logo && 'opacity-80',
+                  )}
+                  alt="Project logo"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  icon={logo ? ImageIcon : UploadIcon}
+                  onClick={() => logoInputRef.current?.click()}
+                  type="button"
+                  variant="outline"
+                >
+                  {logo ? 'Change logo' : 'Upload logo'}
+                </Button>
+                <input
+                  accept={SUPPORTED_LOGO_TYPES.join(',')}
+                  className="sr-only"
+                  onChange={onLogoChange}
+                  ref={logoInputRef}
+                  type="file"
+                />
+                {logo && (
+                  <Button
+                    icon={TrashIcon}
+                    onClick={() =>
+                      form.setValue('logo', null, {
+                        shouldDirty: true,
+                        shouldTouch: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    type="button"
+                    variant="outline"
+                  >
+                    Delete logo
+                  </Button>
+                )}
+              </div>
+            </div>
+          </WithLabel>
 
           <div className="-mb-2 flex gap-2 items-center justify-between">
             <Label className="mb-0">Domain</Label>

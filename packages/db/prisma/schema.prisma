@@ -237,6 +237,7 @@ model Project {
   eventsCount                Int           @default(0)
   types                      ProjectType[] @default([])
   domain                     String?
+  logo                       String?
   cors                       String[]      @default([])
   crossDomain                Boolean       @default(false)
   allowUnsafeRevenueTracking Boolean       @default(false)

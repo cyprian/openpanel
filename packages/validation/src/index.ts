@@ -520,9 +520,15 @@ export const zProjectFilters = z.discriminatedUnion('type', [
 ]);
 export type IProjectFilters = z.infer<typeof zProjectFilters>;
 
+const zProjectLogo = z
+  .string()
+  .max(512_000)
+  .regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/);
+
 export const zProject = z.object({
   id: z.string(),
   name: z.string().min(1),
+  logo: zProjectLogo.nullable().optional(),
   filters: z.array(zProjectFilters).default([]),
   domain: z.string().url().or(z.literal('').or(z.null())),
   cors: z.array(z.string()).default([]),
@@ -535,6 +541,7 @@ export type IProjectEdit = z.infer<typeof zProject>;
 export const zProjectUpdate = z.object({
   id: z.string(),
   name: z.string().min(1).optional(),
+  logo: zProjectLogo.nullable().optional(),
   filters: z.array(zProjectFilters).optional(),
   domain: z.string().url().or(z.literal('').or(z.null())).optional(),
   cors: z.array(z.string()).optional(),

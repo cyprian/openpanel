@@ -73,6 +73,7 @@ export const projectRouter = createTRPCRouter({
         },
         data: {
           name: input.name,
+          logo: input.logo,
           crossDomain: input.crossDomain,
           allowUnsafeRevenueTracking: input.allowUnsafeRevenueTracking,
           enableLocationLookup: input.enableLocationLookup,

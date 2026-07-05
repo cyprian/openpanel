@@ -74,6 +74,7 @@ interface SidebarContainerProps {
   projects: Array<{
     id: string;
     name: string;
+    logo?: string | null;
     organizationId: string;
     types?: string[];
   }>;
@@ -90,6 +91,7 @@ export function SidebarContainer({
   const { isSelfHosted } = useAppContext();
   const { projectId } = useParams({ strict: false });
   const { isOpen: chatOpen, openChatForContext, closeChat } = useChatState();
+  const project = projects.find((item) => item.id === projectId);
 
   useEffect(() => {
     setActive(false);
@@ -125,7 +127,7 @@ export function SidebarContainer({
         </div>
         <div className="flex h-16 shrink-0 items-center gap-2 border-border border-b px-4">
           <Link to="/">
-            <LogoSquare className="max-h-8" />
+            <LogoSquare className="max-h-8" src={project?.logo} />
           </Link>
           <ProjectSelector
             align="start"
