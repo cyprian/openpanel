@@ -15,6 +15,15 @@ const FROM = process.env.EMAIL_SENDER ?? 'hello@openpanel.dev';
 export type EmailData<T extends TemplateKey> = z.infer<Templates[T]['schema']>;
 export type EmailTemplate = keyof Templates;
 
+function maskEmail(email: string) {
+  const [name, domain] = email.split('@');
+  if (!name || !domain) {
+    return '[invalid-email]';
+  }
+
+  return `${name.slice(0, 3)}***@${domain}`;
+}
+
 function createSmtpTransport() {
   return createTransport({
     host: process.env.SMTP_HOST,
@@ -87,6 +96,14 @@ export async function sendEmail<T extends TemplateKey>(
         html,
         headers,
       });
+      console.log('Sent email via SMTP', {
+        template: templateKey,
+        to: maskEmail(to),
+        accepted: res.accepted,
+        rejected: res.rejected,
+        response: res.response,
+        messageId: res.messageId,
+      });
       return res;
     } catch (error) {
       console.error('Failed to send email via SMTP', error);
@@ -116,6 +133,11 @@ export async function sendEmail<T extends TemplateKey>(
     if (res.error) {
       throw new Error(res.error.message);
     }
+    console.log('Sent email via Resend', {
+      template: templateKey,
+      to: maskEmail(to),
+      id: res.data?.id,
+    });
     return res;
   } catch (error) {
     console.error('Failed to send email via Resend', error);
