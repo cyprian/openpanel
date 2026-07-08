@@ -56,9 +56,9 @@ function Component() {
           <TableBody>
             {(runs.data ?? []).map((run) => (
               <TableRow key={run.id}>
-                <TableCell>
+                <TableCell className="overflow-hidden">
                   <Link
-                    className="inline-flex items-center gap-2 font-medium hover:underline"
+                    className="flex min-w-0 max-w-full items-center gap-2 font-medium hover:underline"
                     to="/$organizationId/$projectId/ml/projects/$mlProjectId/runs/$runId"
                     params={{
                       organizationId,
@@ -66,9 +66,10 @@ function Component() {
                       mlProjectId: run.mlProjectId,
                       runId: run.id,
                     }}
+                    title={run.name}
                   >
-                    {run.name}
-                    <ArrowRightIcon className="size-3.5" />
+                    <span className="min-w-0 truncate">{run.name}</span>
+                    <ArrowRightIcon className="size-3.5 shrink-0" />
                   </Link>
                 </TableCell>
                 <TableCell>
