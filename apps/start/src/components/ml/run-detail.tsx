@@ -1746,6 +1746,34 @@ function JsonDialogButton({
   );
 }
 
+function DescriptionDialogButton({ value }: { value: string | null }) {
+  const hasDescription = !!value?.trim();
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button icon={FileTextIcon} variant="outline">
+          Description
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Description</DialogTitle>
+        </DialogHeader>
+        {hasDescription ? (
+          <div className="prose prose-sm dark:prose-invert max-h-[70vh] max-w-none overflow-auto rounded-md bg-background p-4">
+            <Markdown>{value}</Markdown>
+          </div>
+        ) : (
+          <div className="rounded-md bg-def-100 p-3 text-muted-foreground text-sm">
+            No description logged.
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MetricChart({
   color,
   data,
@@ -1885,6 +1913,27 @@ function normalizeNumberRecord(value: unknown): Record<string, number> {
   }
 
   return result;
+}
+
+function getRunDescription(
+  notes: string | null | undefined,
+  metadata: Record<string, unknown>
+) {
+  return (
+    getTextValue(notes) ??
+    getTextValue(metadata.description) ??
+    getTextValue(metadata.experimentDescription) ??
+    getTextValue(metadata.experiment_description) ??
+    getTextValue(metadata.notes)
+  );
+}
+
+function getTextValue(value: unknown) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  return value;
 }
 
 function normalizeMetricDirections(value: unknown): MetricDirections {

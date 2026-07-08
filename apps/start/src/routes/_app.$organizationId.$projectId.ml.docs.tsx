@@ -47,7 +47,7 @@ const navigationItems = [
 const summaryCards = [
   {
     title: 'Runs',
-    description: 'Track status, notes, tags, metadata, and final metrics.',
+    description: 'Track status, descriptions, tags, metadata, and final metrics.',
     icon: ActivityIcon,
   },
   {
@@ -85,7 +85,7 @@ const languageAliases: Record<string, SyntaxLanguage> = {
 
 const content = `## Quick start
 
-Use ML projects for model families like **Iris Segmentation**, **Iris Detection**, **NAFNet**, or **LaMa**. A project can contain many training runs with scalar metrics, images, local artifacts, configuration, metadata, notes, and tags.
+Use ML projects for model families like **Iris Segmentation**, **Iris Detection**, **NAFNet**, or **LaMa**. A project can contain many training runs with scalar metrics, images, local artifacts, configuration, metadata, descriptions, and tags.
 
 > ML projects reuse OpenPanel organizations, users, project settings, clients, and authentication while hiding analytics sections that are not useful for experiment tracking.
 
@@ -148,6 +148,11 @@ import openpanel_ml as opml
 run = opml.init(
     project="eyepic-iris-detection-mobile",
     experiment="iris-unet-baseline-001",
+    description=(
+        "## Goal\\n"
+        "Test whether mobile-friendly augmentation improves iris boundary "
+        "quality without hurting latency."
+    ),
     key_metrics=["loss", "iou", "dice"],
     metric_directions={"loss": "down", "iou": "up", "dice": "up"},
     tags=["baseline", "64x64"],
@@ -193,9 +198,9 @@ run = opml.init(
 | Install with PyPI fallback | \`python -m pip install --extra-index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Upgrade package | \`python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Install secure-storage extra | \`python -m pip install "openpanel-ml[secure-storage]"\` |
-| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.10"\` |
+| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.11"\` |
 
-Current published version: \`0.0.10\`.
+Current published version: \`0.0.11\`.
 
 ## Authentication
 
@@ -230,6 +235,7 @@ run = opml.init(
     project="eyepic-iris-detection-mobile",
     experiment="experiment-name",
     name="experiment-name",
+    description="Trying heavier augmentation to improve PSNR on low-light samples.",
     key_metrics=["loss", "psnr", "ssim"],
     metric_directions={"loss": "down", "psnr": "up", "ssim": "up"},
     config={
@@ -260,6 +266,8 @@ except Exception:
 The SDK creates a local run id immediately, then stores the server UUID returned by OpenPanel after the first sync. Metrics, images, and status updates automatically use the server UUID once it is available.
 
 \`name\` is the top-level run name used in dashboard tables and metric chart legends. If you omit \`name\`, the SDK uses \`experiment\` as the run name so the dashboard does not fall back to generated \`Run <timestamp>\` labels.
+
+\`description\` is optional plain text or Markdown for the experiment's what and why. It is available from the run detail page's **Description** button next to **Metadata**. \`notes\`, \`experiment_description\`, and \`experimentDescription\` are accepted as SDK aliases.
 
 ## Track metrics
 
@@ -393,17 +401,17 @@ run.upload_artifact(
 )
 \`\`\`
 
-Update config, tags, and notes as the job discovers more context:
+Update config, tags, and description as the job discovers more context:
 
 \`\`\`python
 run.config.update({"scheduler": "cosine", "augmentation": "heavy"})
 run.tags(["baseline", "mobile", "iris"])
-run.notes("Baseline run with mobile-sized input and cosine scheduler.")
+run.description("Baseline run with mobile-sized input and cosine scheduler.")
 \`\`\`
 
 ## Offline and sync
 
-Every metric, image, local artifact, config update, tag update, note, and status change is written to \`./openpanel-ml/\` before network sync is attempted. Training does not block on OpenPanel availability.
+Every metric, image, local artifact, config update, tag update, description update, and status change is written to \`./openpanel-ml/\` before network sync is attempted. Training does not block on OpenPanel availability.
 
 \`\`\`text
 openpanel-ml/
@@ -484,7 +492,7 @@ run.finish("canceled")
 | --- | --- |
 | ML Projects | model or experiment groups |
 | Runs | all runs across the current OpenPanel project |
-| Run detail | final metrics, metric charts, config, metadata, notes, tags, and images |
+| Run detail | final metrics, metric charts, config, metadata, descriptions, tags, and images |
 | Images | named visual outputs attached to runs |
 | Compare | overlaid metric charts, hyperparameters, metadata, and final metrics |
 
