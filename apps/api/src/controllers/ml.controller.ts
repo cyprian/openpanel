@@ -41,7 +41,15 @@ export const zCreateMlRun = z.object({
 export const zUpdateMlRun = z.object({
   name: z.string().min(1).optional(),
   status: z
-    .enum(['created', 'running', 'finished', 'failed', 'crashed', 'completed'])
+    .enum([
+      'created',
+      'running',
+      'finished',
+      'failed',
+      'crashed',
+      'canceled',
+      'completed',
+    ])
     .transform((status) => (status === 'completed' ? 'finished' : status))
     .optional(),
   notes: z.string().nullish(),

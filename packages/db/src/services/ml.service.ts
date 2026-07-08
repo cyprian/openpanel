@@ -56,6 +56,7 @@ export const ML_RUN_CREATED_EVENT = 'ml_run_created';
 export const ML_RUN_STARTED_EVENT = 'ml_run_started';
 export const ML_RUN_FINISHED_EVENT = 'ml_run_finished';
 export const ML_RUN_ERROR_EVENT = 'ml_run_error';
+const ML_RUN_ENDED_STATUSES = ['finished', 'failed', 'crashed', 'canceled'];
 
 export const ML_IMAGE_STORAGE_PROVIDER_LOCAL = 'local';
 export const ML_IMAGE_STORAGE_ROOT =
@@ -590,7 +591,7 @@ export async function updateMlRun(input: MlRunUpdateInput) {
   });
 
   const endedAt =
-    input.status && ['finished', 'failed', 'crashed'].includes(input.status)
+    input.status && ML_RUN_ENDED_STATUSES.includes(input.status)
       ? new Date()
       : undefined;
   const startedAt =
@@ -1108,7 +1109,7 @@ function getMlRunStatusEventCreatedAt(run: {
     return run.startedAt;
   }
 
-  if (['finished', 'failed', 'crashed'].includes(run.status) && run.endedAt) {
+  if (ML_RUN_ENDED_STATUSES.includes(run.status) && run.endedAt) {
     return run.endedAt;
   }
 

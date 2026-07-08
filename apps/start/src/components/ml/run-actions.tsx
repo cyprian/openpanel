@@ -38,6 +38,7 @@ const ML_RUN_STATUSES = [
   'finished',
   'failed',
   'crashed',
+  'canceled',
 ] as const satisfies readonly IMlRunStatus[];
 
 export function MlRunActions({

@@ -6,6 +6,7 @@ export const zMlRunStatus = z.enum([
   'finished',
   'failed',
   'crashed',
+  'canceled',
 ]);
 
 export const zMlMetricDirection = z.enum(['up', 'down']);

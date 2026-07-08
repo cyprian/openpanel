@@ -8,6 +8,7 @@ const STATUS_STYLES: Record<string, string> = {
   failed: 'border-transparent bg-rose-600 text-white',
   error: 'border-transparent bg-rose-600 text-white',
   crashed: 'border-transparent bg-fuchsia-600 text-white',
+  canceled: 'border-transparent bg-zinc-600 text-white',
   archived: 'border-transparent bg-zinc-700 text-white',
 };
 

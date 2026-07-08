@@ -563,4 +563,77 @@ describe('ML run status events', () => {
       })
     );
   });
+
+  it('emits a canceled event and ends the run when a run transitions to canceled', async () => {
+    const updatedAt = new Date('2026-07-02T14:00:00.000Z');
+    const endedAt = new Date('2026-07-02T14:05:00.000Z');
+    mocks.db.mlRun.findFirst.mockResolvedValue({
+      id: 'run-id',
+      projectId: 'project-id',
+      mlProjectId: 'ml-project-id',
+      name: 'Run 1',
+      status: 'running',
+      startedAt: new Date('2026-07-02T12:00:00.000Z'),
+      endedAt: null,
+      updatedAt,
+      tags: [],
+      metadata: {},
+      client: null,
+      mlProject: {
+        id: 'ml-project-id',
+        name: 'Compression',
+        runColumns: [],
+      },
+    });
+    mocks.db.mlRun.update.mockResolvedValue({
+      id: 'run-id',
+      projectId: 'project-id',
+      mlProjectId: 'ml-project-id',
+      name: 'Run 1',
+      status: 'canceled',
+      startedAt: new Date('2026-07-02T12:00:00.000Z'),
+      endedAt,
+      updatedAt: endedAt,
+      tags: [],
+      metadata: {},
+      client: null,
+      mlProject: {
+        id: 'ml-project-id',
+        name: 'Compression',
+        runColumns: [],
+      },
+    });
+    mocks.createEvent.mockResolvedValue({});
+    mocks.checkNotificationRulesForEvent.mockResolvedValue(undefined);
+
+    await updateMlRun({
+      projectId: 'project-id',
+      id: 'run-id',
+      status: 'canceled',
+    });
+
+    expect(mocks.db.mlRun.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'canceled',
+          endedAt: expect.any(Date),
+        }),
+      })
+    );
+    expect(mocks.createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'ml_run_canceled',
+        projectId: 'project-id',
+        createdAt: endedAt,
+        properties: expect.objectContaining({
+          ml_project_id: 'ml-project-id',
+          ml_project_name: 'Compression',
+          ml_run_id: 'run-id',
+          ml_run_name: 'Run 1',
+          status: 'canceled',
+          previous_status: 'running',
+        }),
+      })
+    );
+  });
 });

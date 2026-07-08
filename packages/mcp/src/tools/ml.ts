@@ -139,7 +139,7 @@ export function registerMlTools(server: McpServer, context: McpAuthContext) {
     {
       projectId: projectIdSchema(context),
       mlProjectId: z.string().optional().describe('Filter runs to a specific ML project ID'),
-      status: z.string().optional().describe('Filter by run status, e.g. running, finished, failed'),
+      status: z.string().optional().describe('Filter by run status, e.g. running, finished, failed, canceled'),
       tag: z.string().optional().describe('Filter to runs containing this tag'),
       limit: z
         .number()
