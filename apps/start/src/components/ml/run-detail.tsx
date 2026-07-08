@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import {
   Table,
@@ -44,6 +45,7 @@ import {
 } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
+import { GIFEncoder, applyPalette, quantize } from 'gifenc';
 import {
   ArrowDownIcon,
   ArrowLeftRightIcon,
@@ -51,7 +53,11 @@ import {
   ArrowUpIcon,
   BracesIcon,
   DatabaseIcon,
+  DownloadIcon,
+  FilmIcon,
+  ImageIcon,
   KeyIcon,
+  RefreshCwIcon,
   Settings2Icon,
   type LucideIcon,
 } from 'lucide-react';
@@ -67,6 +73,7 @@ import {
   YAxis,
   type TooltipProps,
 } from 'recharts';
+import { toast } from 'sonner';
 
 const ML_CHART_BLUE = '#2563eb';
 const NO_COMPARE_VALUE = '__none__';
@@ -81,6 +88,13 @@ const KEY_METRIC_COLORS = [
 ];
 const ML_RUN_COLUMN_METRIC_PREFIX = 'metric:';
 const ML_STANDARD_RUN_COLUMNS = new Set(['apiSource', 'tags']);
+const DEFAULT_GIF_FRAME_DELAY_MS = 500;
+const MIN_GIF_FRAME_DELAY_MS = 100;
+const MAX_GIF_FRAME_DELAY_MS = 2000;
+const GIF_FRAME_DELAY_STEP_MS = 50;
+const MAX_GIF_DIMENSION = 768;
+const FILENAME_UNSAFE_CHARACTERS = /[^a-z0-9]+/g;
+const FILENAME_EDGE_DASHES = /^-+|-+$/g;
 const LOWER_IS_BETTER_ML_METRIC_PATTERNS = [
   /(^|[_\s/.-])loss($|[_\s/.-])/i,
   /(^|[_\s/.-])error($|[_\s/.-])/i,
@@ -615,6 +629,14 @@ type MlRunImage = {
   dataUrl: string;
 };
 
+type MlGeneratedGif = {
+  url: string;
+  blob: Blob;
+  width: number;
+  height: number;
+  delayMs: number;
+};
+
 type MlEvaluationRow = {
   id: string;
   sampleId: string | null;
@@ -1087,6 +1109,10 @@ function EvaluationTable({
                               imageColumnNames,
                               images[0]?.id
                             )}
+                            gifImages={getGifImages(
+                              row.images,
+                              imageColumnNames
+                            )}
                             images={images}
                           />
                         </TableCell>
@@ -1131,9 +1157,11 @@ function EvaluationTable({
 
 function EvaluationImageThumb({
   compareImages,
+  gifImages,
   images,
 }: {
   compareImages: MlRunImage[];
+  gifImages: MlRunImage[];
   images: MlRunImage[];
 }) {
   const image = images[0];
@@ -1172,7 +1200,11 @@ function EvaluationImageThumb({
         </button>
       </DialogTrigger>
       {image.dataUrl && (
-        <EvaluationImageDialog compareImages={compareImages} image={image} />
+        <EvaluationImageDialog
+          compareImages={compareImages}
+          gifImages={gifImages}
+          image={image}
+        />
       )}
     </Dialog>
   );
@@ -1180,17 +1212,115 @@ function EvaluationImageThumb({
 
 function EvaluationImageDialog({
   compareImages,
+  gifImages,
   image,
 }: {
   compareImages: MlRunImage[];
+  gifImages: MlRunImage[];
   image: MlRunImage;
 }) {
   const [compareImageId, setCompareImageId] = useState(NO_COMPARE_VALUE);
   const [comparePosition, setComparePosition] = useState(50);
+  const [viewMode, setViewMode] = useState<'image' | 'gif'>('image');
+  const [gifDelayMs, setGifDelayMs] = useState(DEFAULT_GIF_FRAME_DELAY_MS);
+  const [gifStatus, setGifStatus] = useState<
+    'idle' | 'generating' | 'ready' | 'error'
+  >('idle');
+  const [gifResult, setGifResult] = useState<MlGeneratedGif | null>(null);
+  const [gifError, setGifError] = useState<string | null>(null);
+  const gifObjectUrlRef = useRef<string | null>(null);
+  const gifGenerationRef = useRef(0);
   const imageLabel = getImageLabel(image);
   const compareImage = compareImages.find((item) => item.id === compareImageId);
+  const gifFrameImages = gifImages.filter((item) => item.dataUrl);
+  const hasGifFrames = gifFrameImages.length > 1;
+  const isGifStale = !!gifResult && gifResult.delayMs !== gifDelayMs;
   const dimensions =
     image.width && image.height ? `${image.width} x ${image.height}` : null;
+  const gifDescription = hasGifFrames
+    ? `${gifFrameImages.length} frames at ${gifDelayMs} ms per frame`
+    : 'Add at least two images to this evaluation row to build a GIF.';
+
+  useEffect(() => {
+    return () => {
+      gifGenerationRef.current += 1;
+      if (gifObjectUrlRef.current) {
+        URL.revokeObjectURL(gifObjectUrlRef.current);
+      }
+    };
+  }, []);
+
+  const setGifObjectUrl = (url: string) => {
+    if (gifObjectUrlRef.current) {
+      URL.revokeObjectURL(gifObjectUrlRef.current);
+    }
+
+    gifObjectUrlRef.current = url;
+  };
+
+  const clearGifObjectUrl = () => {
+    if (!gifObjectUrlRef.current) {
+      return;
+    }
+
+    URL.revokeObjectURL(gifObjectUrlRef.current);
+    gifObjectUrlRef.current = null;
+  };
+
+  const handleGenerateGif = async () => {
+    if (!hasGifFrames) {
+      return;
+    }
+
+    const generation = gifGenerationRef.current + 1;
+    gifGenerationRef.current = generation;
+    setViewMode('gif');
+    setGifStatus('generating');
+    setGifError(null);
+
+    try {
+      const result = await generateEvaluationGif(gifFrameImages, gifDelayMs);
+      if (gifGenerationRef.current !== generation) {
+        URL.revokeObjectURL(result.url);
+        return;
+      }
+
+      setGifObjectUrl(result.url);
+      setGifResult(result);
+      setGifStatus('ready');
+    } catch (error) {
+      if (gifGenerationRef.current !== generation) {
+        return;
+      }
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Could not generate this GIF.';
+      setGifResult(null);
+      clearGifObjectUrl();
+      setGifError(message);
+      setGifStatus('error');
+      toast('Could not generate GIF', { description: message });
+    }
+  };
+
+  const handleViewGif = () => {
+    if (gifResult && !isGifStale) {
+      setViewMode('gif');
+      return;
+    }
+
+    handleGenerateGif();
+  };
+
+  const handleDownloadGif = () => {
+    if (!gifResult) {
+      return;
+    }
+
+    downloadUrl(gifResult.url, getGifDownloadFilename(image));
+  };
 
   return (
     <DialogContent
@@ -1198,13 +1328,74 @@ function EvaluationImageDialog({
       showCloseButton
     >
       <DialogHeader className="pr-8">
-        <DialogTitle className="truncate text-base">{imageLabel}</DialogTitle>
-        <div className="text-muted-foreground text-xs">
-          {dimensions ?? 'Original image'}
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="truncate text-base">
+              {viewMode === 'gif' ? 'Step GIF' : imageLabel}
+            </DialogTitle>
+            <div className="text-muted-foreground text-xs">
+              {viewMode === 'gif'
+                ? gifDescription
+                : (dimensions ?? 'Original image')}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {viewMode === 'gif' && (
+              <Button
+                icon={ImageIcon}
+                onClick={() => setViewMode('image')}
+                variant="outline"
+              >
+                View image
+              </Button>
+            )}
+            {viewMode === 'image' && hasGifFrames && (
+              <Button
+                disabled={!hasGifFrames}
+                icon={FilmIcon}
+                loading={gifStatus === 'generating'}
+                onClick={handleViewGif}
+                variant="outline"
+              >
+                View as GIF
+              </Button>
+            )}
+            {viewMode === 'gif' && (
+              <>
+                <Button
+                  disabled={!hasGifFrames}
+                  icon={RefreshCwIcon}
+                  loading={gifStatus === 'generating'}
+                  onClick={handleGenerateGif}
+                  variant="outline"
+                >
+                  {gifResult ? 'Regenerate' : 'Generate'}
+                </Button>
+                <Button
+                  disabled={
+                    !gifResult || isGifStale || gifStatus === 'generating'
+                  }
+                  icon={DownloadIcon}
+                  onClick={handleDownloadGif}
+                  variant="default"
+                >
+                  Download
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </DialogHeader>
       <div className="max-h-[calc(100vh-10rem)] max-w-[calc(100vw-2rem)] overflow-auto rounded-md border bg-def-100">
-        {compareImage ? (
+        {viewMode === 'gif' ? (
+          <GifPreview
+            error={gifError}
+            isStale={isGifStale}
+            onGenerate={handleGenerateGif}
+            result={gifResult}
+            status={gifStatus}
+          />
+        ) : compareImage ? (
           <ImageComparisonSlider
             compareImage={compareImage}
             image={image}
@@ -1221,39 +1412,155 @@ function EvaluationImageDialog({
           />
         )}
       </div>
-      {compareImages.length > 0 && (
-        <div className="grid gap-1.5">
-          <label
-            className="font-medium text-muted-foreground text-xs"
-            htmlFor={`compare-${image.id}`}
-          >
-            Compare
-          </label>
-          <Select
-            onValueChange={(value) => {
-              setCompareImageId(value);
-              setComparePosition(50);
-            }}
-            value={compareImageId}
-          >
-            <SelectTrigger
-              className="w-full sm:w-64"
-              id={`compare-${image.id}`}
+      {viewMode === 'gif' ? (
+        <div className="grid gap-3 rounded-md border bg-background p-3">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <label
+              className="font-medium text-muted-foreground text-xs"
+              htmlFor={`gif-delay-${image.id}`}
             >
-              <SelectValue placeholder="Select image" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_COMPARE_VALUE}>None</SelectItem>
-              {compareImages.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {item.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              Frame delay
+            </label>
+            <span className="font-mono text-muted-foreground text-xs">
+              {gifDelayMs} ms
+            </span>
+            <Slider
+              className="sm:col-span-2"
+              id={`gif-delay-${image.id}`}
+              max={MAX_GIF_FRAME_DELAY_MS}
+              min={MIN_GIF_FRAME_DELAY_MS}
+              onValueChange={(value) => {
+                const [delay] = value;
+                setGifDelayMs(delay ?? DEFAULT_GIF_FRAME_DELAY_MS);
+              }}
+              step={GIF_FRAME_DELAY_STEP_MS}
+              value={[gifDelayMs]}
+            />
+          </div>
+          <div className="flex max-w-[calc(100vw-2rem)] gap-2 overflow-x-auto pb-1">
+            {gifFrameImages.map((item, index) => (
+              <div
+                className="grid w-16 shrink-0 gap-1"
+                key={`${item.id}-${index}`}
+              >
+                <div className="center-center h-12 w-16 overflow-hidden rounded border bg-def-100">
+                  <img
+                    alt={getImageLabel(item)}
+                    className="h-full w-full object-contain"
+                    src={item.dataUrl}
+                  />
+                </div>
+                <div className="truncate text-center text-muted-foreground text-[10px]">
+                  {index + 1}. {item.name}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
+      ) : (
+        compareImages.length > 0 && (
+          <div className="grid gap-1.5">
+            <label
+              className="font-medium text-muted-foreground text-xs"
+              htmlFor={`compare-${image.id}`}
+            >
+              Compare
+            </label>
+            <Select
+              onValueChange={(value) => {
+                setCompareImageId(value);
+                setComparePosition(50);
+              }}
+              value={compareImageId}
+            >
+              <SelectTrigger
+                className="w-full sm:w-64"
+                id={`compare-${image.id}`}
+              >
+                <SelectValue placeholder="Select image" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_COMPARE_VALUE}>None</SelectItem>
+                {compareImages.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )
       )}
     </DialogContent>
+  );
+}
+
+function GifPreview({
+  error,
+  isStale,
+  onGenerate,
+  result,
+  status,
+}: {
+  error: string | null;
+  isStale: boolean;
+  onGenerate: () => void;
+  result: MlGeneratedGif | null;
+  status: 'idle' | 'generating' | 'ready' | 'error';
+}) {
+  if (status === 'generating') {
+    return (
+      <div className="center-center min-h-72 min-w-80 p-8 text-muted-foreground text-sm">
+        Encoding GIF...
+      </div>
+    );
+  }
+
+  if (result) {
+    return (
+      <div className="relative">
+        <img
+          alt="Generated step GIF"
+          className="block h-auto max-h-[calc(100vh-10rem)] max-w-full"
+          height={result.height}
+          src={result.url}
+          width={result.width}
+        />
+        <div className="absolute right-2 bottom-2 rounded bg-black px-2 py-1 font-medium text-white text-xs shadow">
+          {result.width} x {result.height} - {formatBytes(result.blob.size)}
+        </div>
+        {isStale && (
+          <div className="absolute inset-x-2 top-2 rounded border bg-background/95 px-3 py-2 text-muted-foreground text-xs shadow">
+            Frame delay changed.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="center-center min-h-72 min-w-80 p-8">
+      <div className="grid max-w-sm justify-items-center gap-3 text-center">
+        <div className="center-center size-10 rounded-full border bg-background">
+          <FilmIcon className="size-4 text-muted-foreground" />
+        </div>
+        <div>
+          <div className="font-medium text-sm">
+            {status === 'error' ? 'GIF unavailable' : 'GIF preview'}
+          </div>
+          <div className="text-muted-foreground text-xs">
+            {error ?? 'Generate an animation from this row.'}
+          </div>
+        </div>
+        <Button
+          icon={RefreshCwIcon}
+          onClick={onGenerate}
+          variant="outline"
+        >
+          Try again
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -1753,6 +2060,167 @@ function getComparableImages(
   });
 }
 
+function getGifImages(images: MlRunImage[], imageColumnNames: string[]) {
+  const imagesByName = new Map<string, MlRunImage[]>();
+  for (const image of images) {
+    if (!image.dataUrl) {
+      continue;
+    }
+
+    const items = imagesByName.get(image.name);
+    if (items) {
+      items.push(image);
+      continue;
+    }
+
+    imagesByName.set(image.name, [image]);
+  }
+
+  return imageColumnNames.flatMap((name) => imagesByName.get(name) ?? []);
+}
+
 function getImageLabel(image: MlRunImage) {
   return image.caption || image.filename || image.name;
+}
+
+async function generateEvaluationGif(
+  images: MlRunImage[],
+  delayMs: number
+): Promise<MlGeneratedGif> {
+  const frames = await Promise.all(images.map(loadGifFrame));
+  if (frames.length < 2) {
+    throw new Error('At least two images are needed.');
+  }
+
+  const { width, height } = getGifCanvasSize(frames);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) {
+    throw new Error('Could not create an image canvas.');
+  }
+
+  const gif = GIFEncoder();
+  for (const frame of frames) {
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    drawContainedImage(context, frame.image, width, height);
+    const imageData = context.getImageData(0, 0, width, height);
+    const palette = quantize(imageData.data, 256);
+    const index = applyPalette(imageData.data, palette);
+    gif.writeFrame(index, width, height, {
+      delay: delayMs,
+      palette,
+      repeat: 0,
+    });
+  }
+  gif.finish();
+
+  const bytes = gif.bytes();
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const blob = new Blob([buffer], { type: 'image/gif' });
+  return {
+    blob,
+    delayMs,
+    height,
+    url: URL.createObjectURL(blob),
+    width,
+  };
+}
+
+function loadGifFrame(image: MlRunImage) {
+  return new Promise<{
+    image: HTMLImageElement;
+    width: number;
+    height: number;
+  }>((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => {
+      const width = element.naturalWidth || element.width;
+      const height = element.naturalHeight || element.height;
+      if (width <= 0 || height <= 0) {
+        reject(new Error(`Could not read ${getImageLabel(image)} dimensions.`));
+        return;
+      }
+
+      resolve({ height, image: element, width });
+    };
+    element.onerror = () => {
+      reject(new Error(`Could not load ${getImageLabel(image)}.`));
+    };
+    element.src = image.dataUrl;
+  });
+}
+
+function getGifCanvasSize(
+  frames: Array<{ width: number; height: number }>
+) {
+  const maxWidth = Math.max(...frames.map((frame) => frame.width));
+  const maxHeight = Math.max(...frames.map((frame) => frame.height));
+  const maxDimension = Math.max(maxWidth, maxHeight);
+  const scale =
+    maxDimension > MAX_GIF_DIMENSION ? MAX_GIF_DIMENSION / maxDimension : 1;
+
+  return {
+    height: Math.max(1, Math.round(maxHeight * scale)),
+    width: Math.max(1, Math.round(maxWidth * scale)),
+  };
+}
+
+function drawContainedImage(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  width: number,
+  height: number
+) {
+  const naturalWidth = image.naturalWidth || image.width;
+  const naturalHeight = image.naturalHeight || image.height;
+  const scale = Math.min(width / naturalWidth, height / naturalHeight);
+  const drawWidth = Math.round(naturalWidth * scale);
+  const drawHeight = Math.round(naturalHeight * scale);
+  const drawX = Math.round((width - drawWidth) / 2);
+  const drawY = Math.round((height - drawHeight) / 2);
+
+  context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
+function downloadUrl(url: string, filename: string) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function getGifDownloadFilename(image: MlRunImage) {
+  const name = getFilenamePart(getImageLabel(image));
+  const step = typeof image.step === 'number' ? `step-${image.step}` : 'step';
+
+  return `ml-${name}-${step}.gif`;
+}
+
+function getFilenamePart(value: string) {
+  return (
+    value
+      .toLowerCase()
+      .replaceAll(FILENAME_UNSAFE_CHARACTERS, '-')
+      .replaceAll(FILENAME_EDGE_DASHES, '')
+      .slice(0, 80) || 'evaluation'
+  );
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  const kibibytes = bytes / 1024;
+  if (kibibytes < 1024) {
+    return `${kibibytes.toFixed(1)} KB`;
+  }
+
+  return `${(kibibytes / 1024).toFixed(1)} MB`;
 }
