@@ -8,6 +8,7 @@ import {
   getMlMetricSeries,
   getMlProjectById,
   getMlRunById,
+  listMlEvaluationImageTimeline,
   listMlEvaluationRows,
   listMlEvaluationSteps,
   listMlImagesWithData,
@@ -161,6 +162,18 @@ export const mlRouter = createTRPCRouter({
       })
     )
     .query(({ input }) => listMlEvaluationRows(input)),
+
+  evaluationImageTimeline: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        runId: z.string(),
+        evaluationRowId: z.string(),
+        imageName: z.string().min(1),
+        limit: z.number().int().positive().max(500).default(200),
+      })
+    )
+    .query(({ input }) => listMlEvaluationImageTimeline(input)),
 
   evaluationSteps: protectedProcedure
     .input(

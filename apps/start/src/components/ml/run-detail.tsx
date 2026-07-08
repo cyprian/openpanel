@@ -1,5 +1,6 @@
 import { MlStatusBadge } from '@/components/ml/status-badge';
 import { MlRunActions } from '@/components/ml/run-actions';
+import { Markdown } from '@/components/markdown';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +55,7 @@ import {
   BracesIcon,
   DatabaseIcon,
   DownloadIcon,
+  FileTextIcon,
   FilmIcon,
   ImageIcon,
   KeyIcon,
@@ -216,6 +218,7 @@ export function MlRunDetail({
   const visibleSummary = filterZeroMetrics(summary, showZeroMetricValues);
   const config = normalizeRecord(run.data?.config);
   const metadata = normalizeRecord(run.data?.metadata);
+  const description = getRunDescription(run.data?.notes, metadata);
   const metricDirections = useMemo(
     () => normalizeMetricDirections(metadata),
     [metadata]
@@ -428,6 +431,7 @@ export function MlRunDetail({
                 title="Metadata"
                 value={metadata}
               />
+              <DescriptionDialogButton value={description} />
               <MlRunActions
                 projectId={projectId}
                 runId={run.data.id}
@@ -476,12 +480,6 @@ export function MlRunDetail({
             </Badge>
           ))}
         </div>
-      )}
-      {run.data?.notes && (
-        <section className="mb-4 rounded-md border bg-card p-4">
-          <div className="mb-2 font-medium">Notes</div>
-          <p className="whitespace-pre-wrap text-sm">{run.data.notes}</p>
-        </section>
       )}
       {keyMetrics.length > 0 && (
         <section className="mb-4 rounded-md border bg-card p-4">
@@ -606,6 +604,8 @@ export function MlRunDetail({
             setEvaluationPage(1);
           }}
           page={evaluationPage}
+          projectId={projectId}
+          runId={runId}
           search={evaluationSearch}
           selectedStep={effectiveEvaluationStep}
           sortBy={evaluationSortBy}
@@ -942,6 +942,8 @@ function EvaluationTable({
   data,
   isLoading,
   isLoadingSteps,
+  projectId,
+  runId,
   search,
   page,
   selectedStep,
@@ -957,6 +959,8 @@ function EvaluationTable({
   data?: MlEvaluationRowsData;
   isLoading: boolean;
   isLoadingSteps: boolean;
+  projectId: string;
+  runId: string;
   search: string;
   page: number;
   selectedStep?: number;
@@ -1109,11 +1113,10 @@ function EvaluationTable({
                               imageColumnNames,
                               images[0]?.id
                             )}
-                            gifImages={getGifImages(
-                              row.images,
-                              imageColumnNames
-                            )}
+                            evaluationRowId={row.id}
                             images={images}
+                            projectId={projectId}
+                            runId={runId}
                           />
                         </TableCell>
                       );
@@ -1157,12 +1160,16 @@ function EvaluationTable({
 
 function EvaluationImageThumb({
   compareImages,
-  gifImages,
+  evaluationRowId,
   images,
+  projectId,
+  runId,
 }: {
   compareImages: MlRunImage[];
-  gifImages: MlRunImage[];
+  evaluationRowId: string;
   images: MlRunImage[];
+  projectId: string;
+  runId: string;
 }) {
   const image = images[0];
   if (!image) {
@@ -1202,8 +1209,10 @@ function EvaluationImageThumb({
       {image.dataUrl && (
         <EvaluationImageDialog
           compareImages={compareImages}
-          gifImages={gifImages}
+          evaluationRowId={evaluationRowId}
           image={image}
+          projectId={projectId}
+          runId={runId}
         />
       )}
     </Dialog>
@@ -1212,13 +1221,19 @@ function EvaluationImageThumb({
 
 function EvaluationImageDialog({
   compareImages,
-  gifImages,
+  evaluationRowId,
   image,
+  projectId,
+  runId,
 }: {
   compareImages: MlRunImage[];
-  gifImages: MlRunImage[];
+  evaluationRowId: string;
   image: MlRunImage;
+  projectId: string;
+  runId: string;
 }) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [compareImageId, setCompareImageId] = useState(NO_COMPARE_VALUE);
   const [comparePosition, setComparePosition] = useState(50);
   const [viewMode, setViewMode] = useState<'image' | 'gif'>('image');
@@ -1228,18 +1243,24 @@ function EvaluationImageDialog({
   >('idle');
   const [gifResult, setGifResult] = useState<MlGeneratedGif | null>(null);
   const [gifError, setGifError] = useState<string | null>(null);
+  const [gifFrameImages, setGifFrameImages] = useState<MlRunImage[]>([]);
   const gifObjectUrlRef = useRef<string | null>(null);
   const gifGenerationRef = useRef(0);
   const imageLabel = getImageLabel(image);
   const compareImage = compareImages.find((item) => item.id === compareImageId);
-  const gifFrameImages = gifImages.filter((item) => item.dataUrl);
-  const hasGifFrames = gifFrameImages.length > 1;
   const isGifStale = !!gifResult && gifResult.delayMs !== gifDelayMs;
   const dimensions =
     image.width && image.height ? `${image.width} x ${image.height}` : null;
-  const gifDescription = hasGifFrames
+  const gifDescription = gifFrameImages.length > 1
     ? `${gifFrameImages.length} frames at ${gifDelayMs} ms per frame`
-    : 'Add at least two images to this evaluation row to build a GIF.';
+    : `Collecting ${image.name} frames across steps.`;
+  const timelineQueryOptions = trpc.ml.evaluationImageTimeline.queryOptions({
+    evaluationRowId,
+    imageName: image.name,
+    limit: 200,
+    projectId,
+    runId,
+  });
 
   useEffect(() => {
     return () => {
@@ -1268,10 +1289,6 @@ function EvaluationImageDialog({
   };
 
   const handleGenerateGif = async () => {
-    if (!hasGifFrames) {
-      return;
-    }
-
     const generation = gifGenerationRef.current + 1;
     gifGenerationRef.current = generation;
     setViewMode('gif');
@@ -1279,7 +1296,20 @@ function EvaluationImageDialog({
     setGifError(null);
 
     try {
-      const result = await generateEvaluationGif(gifFrameImages, gifDelayMs);
+      const timelineImages = await queryClient.fetchQuery(timelineQueryOptions);
+      if (gifGenerationRef.current !== generation) {
+        return;
+      }
+
+      const frames = timelineImages.filter((item) => item.dataUrl);
+      setGifFrameImages(frames);
+      if (frames.length < 2) {
+        throw new Error(
+          `Need at least two ${image.name} images across steps to build a GIF.`
+        );
+      }
+
+      const result = await generateEvaluationGif(frames, gifDelayMs);
       if (gifGenerationRef.current !== generation) {
         URL.revokeObjectURL(result.url);
         return;
@@ -1324,69 +1354,28 @@ function EvaluationImageDialog({
 
   return (
     <DialogContent
-      className="w-fit max-w-[calc(100vw-0.75rem)] gap-3 p-3 sm:p-4"
+      className={
+        viewMode === 'gif'
+          ? 'w-[min(1120px,calc(100vw-0.75rem))] max-w-[calc(100vw-0.75rem)] gap-4 p-3 sm:p-4'
+          : 'w-fit max-w-[calc(100vw-0.75rem)] gap-3 p-3 sm:p-4'
+      }
       showCloseButton
     >
       <DialogHeader className="pr-8">
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <DialogTitle className="truncate text-base">
-              {viewMode === 'gif' ? 'Step GIF' : imageLabel}
-            </DialogTitle>
-            <div className="text-muted-foreground text-xs">
-              {viewMode === 'gif'
-                ? gifDescription
-                : (dimensions ?? 'Original image')}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {viewMode === 'gif' && (
-              <Button
-                icon={ImageIcon}
-                onClick={() => setViewMode('image')}
-                variant="outline"
-              >
-                View image
-              </Button>
-            )}
-            {viewMode === 'image' && hasGifFrames && (
-              <Button
-                disabled={!hasGifFrames}
-                icon={FilmIcon}
-                loading={gifStatus === 'generating'}
-                onClick={handleViewGif}
-                variant="outline"
-              >
-                View as GIF
-              </Button>
-            )}
-            {viewMode === 'gif' && (
-              <>
-                <Button
-                  disabled={!hasGifFrames}
-                  icon={RefreshCwIcon}
-                  loading={gifStatus === 'generating'}
-                  onClick={handleGenerateGif}
-                  variant="outline"
-                >
-                  {gifResult ? 'Regenerate' : 'Generate'}
-                </Button>
-                <Button
-                  disabled={
-                    !gifResult || isGifStale || gifStatus === 'generating'
-                  }
-                  icon={DownloadIcon}
-                  onClick={handleDownloadGif}
-                  variant="default"
-                >
-                  Download
-                </Button>
-              </>
-            )}
-          </div>
+        <DialogTitle className="truncate text-base">
+          {viewMode === 'gif' ? `${image.name} GIF` : imageLabel}
+        </DialogTitle>
+        <div className="text-muted-foreground text-xs">
+          {viewMode === 'gif' ? gifDescription : (dimensions ?? 'Original image')}
         </div>
       </DialogHeader>
-      <div className="max-h-[calc(100vh-10rem)] max-w-[calc(100vw-2rem)] overflow-auto rounded-md border bg-def-100">
+      <div
+        className={
+          viewMode === 'gif'
+            ? 'center-center min-h-[min(70vh,720px)] w-full overflow-auto rounded-md border bg-def-100 p-3'
+            : 'max-h-[calc(100vh-10rem)] max-w-[calc(100vw-2rem)] overflow-auto rounded-md border bg-def-100'
+        }
+      >
         {viewMode === 'gif' ? (
           <GifPreview
             error={gifError}
@@ -1437,59 +1426,97 @@ function EvaluationImageDialog({
               value={[gifDelayMs]}
             />
           </div>
-          <div className="flex max-w-[calc(100vw-2rem)] gap-2 overflow-x-auto pb-1">
-            {gifFrameImages.map((item, index) => (
-              <div
-                className="grid w-16 shrink-0 gap-1"
-                key={`${item.id}-${index}`}
-              >
-                <div className="center-center h-12 w-16 overflow-hidden rounded border bg-def-100">
-                  <img
-                    alt={getImageLabel(item)}
-                    className="h-full w-full object-contain"
-                    src={item.dataUrl}
-                  />
+          {gifFrameImages.length > 0 && (
+            <div className="flex max-w-[calc(100vw-2rem)] gap-2 overflow-x-auto pb-1">
+              {gifFrameImages.map((item, index) => (
+                <div
+                  className="grid w-16 shrink-0 gap-1"
+                  key={`${item.id}-${index}`}
+                >
+                  <div className="center-center h-12 w-16 overflow-hidden rounded border bg-def-100">
+                    <img
+                      alt={getImageLabel(item)}
+                      className="h-full w-full object-contain"
+                      src={item.dataUrl}
+                    />
+                  </div>
+                  <div className="truncate text-center text-muted-foreground text-[10px]">
+                    {index + 1}. Step {item.step ?? '-'}
+                  </div>
                 </div>
-                <div className="truncate text-center text-muted-foreground text-[10px]">
-                  {index + 1}. {item.name}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              icon={ImageIcon}
+              onClick={() => setViewMode('image')}
+              variant="outline"
+            >
+              View image
+            </Button>
+            <Button
+              icon={RefreshCwIcon}
+              loading={gifStatus === 'generating'}
+              onClick={handleGenerateGif}
+              variant="outline"
+            >
+              {gifResult ? 'Regenerate' : 'Generate'}
+            </Button>
+            <Button
+              disabled={!gifResult || isGifStale || gifStatus === 'generating'}
+              icon={DownloadIcon}
+              onClick={handleDownloadGif}
+              variant="default"
+            >
+              Download
+            </Button>
           </div>
         </div>
       ) : (
-        compareImages.length > 0 && (
-          <div className="grid gap-1.5">
-            <label
-              className="font-medium text-muted-foreground text-xs"
-              htmlFor={`compare-${image.id}`}
-            >
-              Compare
-            </label>
-            <Select
-              onValueChange={(value) => {
-                setCompareImageId(value);
-                setComparePosition(50);
-              }}
-              value={compareImageId}
-            >
-              <SelectTrigger
-                className="w-full sm:w-64"
-                id={`compare-${image.id}`}
+        <div className="grid gap-3">
+          {compareImages.length > 0 && (
+            <div className="grid gap-1.5">
+              <label
+                className="font-medium text-muted-foreground text-xs"
+                htmlFor={`compare-${image.id}`}
               >
-                <SelectValue placeholder="Select image" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_COMPARE_VALUE}>None</SelectItem>
-                {compareImages.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )
+                Compare
+              </label>
+              <Select
+                onValueChange={(value) => {
+                  setCompareImageId(value);
+                  setComparePosition(50);
+                }}
+                value={compareImageId}
+              >
+                <SelectTrigger
+                  className="w-full sm:w-64"
+                  id={`compare-${image.id}`}
+                >
+                  <SelectValue placeholder="Select image" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_COMPARE_VALUE}>None</SelectItem>
+                  {compareImages.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <Button
+            className="justify-self-start"
+            icon={FilmIcon}
+            loading={gifStatus === 'generating'}
+            onClick={handleViewGif}
+            variant="outline"
+          >
+            View as GIF
+          </Button>
+        </div>
       )}
     </DialogContent>
   );
@@ -1518,10 +1545,10 @@ function GifPreview({
 
   if (result) {
     return (
-      <div className="relative">
+      <div className="relative mx-auto inline-block">
         <img
           alt="Generated step GIF"
-          className="block h-auto max-h-[calc(100vh-10rem)] max-w-full"
+          className="block h-auto max-h-[min(62vh,680px)] max-w-full"
           height={result.height}
           src={result.url}
           width={result.width}
@@ -2058,25 +2085,6 @@ function getComparableImages(
     const image = imagesByName.get(name);
     return image ? [image] : [];
   });
-}
-
-function getGifImages(images: MlRunImage[], imageColumnNames: string[]) {
-  const imagesByName = new Map<string, MlRunImage[]>();
-  for (const image of images) {
-    if (!image.dataUrl) {
-      continue;
-    }
-
-    const items = imagesByName.get(image.name);
-    if (items) {
-      items.push(image);
-      continue;
-    }
-
-    imagesByName.set(image.name, [image]);
-  }
-
-  return imageColumnNames.flatMap((name) => imagesByName.get(name) ?? []);
 }
 
 function getImageLabel(image: MlRunImage) {

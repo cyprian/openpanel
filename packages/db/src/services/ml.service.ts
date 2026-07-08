@@ -1408,6 +1408,72 @@ export async function listMlEvaluationRows(input: {
   };
 }
 
+export async function listMlEvaluationImageTimeline(input: {
+  projectId: string;
+  runId: string;
+  evaluationRowId: string;
+  imageName: string;
+  limit?: number;
+}) {
+  const anchorRow = await db.mlEvaluationRow.findFirstOrThrow({
+    where: {
+      id: input.evaluationRowId,
+      projectId: input.projectId,
+      runId: input.runId,
+    },
+    select: {
+      id: true,
+      sampleId: true,
+    },
+  });
+  const rows = await db.mlEvaluationRow.findMany({
+    where: {
+      projectId: input.projectId,
+      runId: input.runId,
+      ...(anchorRow.sampleId
+        ? { sampleId: anchorRow.sampleId }
+        : { id: anchorRow.id }),
+    },
+    orderBy: [
+      {
+        step: 'asc',
+      },
+      {
+        createdAt: 'asc',
+      },
+    ],
+    take: Math.min(input.limit ?? 200, 500),
+  });
+  const imageIds = [...new Set(rows.flatMap((row) => row.imageIds))];
+  const images = imageIds.length
+    ? await listMlImagesByIdsWithData({
+        projectId: input.projectId,
+        runId: input.runId,
+        ids: imageIds,
+      })
+    : [];
+  const imagesById = new Map(images.map((image) => [image.id, image]));
+
+  return rows.flatMap((row) => {
+    const image = row.imageIds
+      .map((id) => imagesById.get(id))
+      .find((item) => item?.name === input.imageName && item.dataUrl);
+
+    if (!image) {
+      return [];
+    }
+
+    return [
+      {
+        ...image,
+        evaluationRowId: row.id,
+        evaluationStep: row.step,
+        evaluationEpoch: row.epoch,
+      },
+    ];
+  });
+}
+
 export async function listMlEvaluationSteps(input: {
   projectId: string;
   runId: string;
