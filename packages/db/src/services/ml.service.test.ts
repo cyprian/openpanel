@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createMlRun,
   getMlKeyMetricNamesFromRunColumns,
+  getMlMetricDirectionsFromMetadata,
   getMlMetricImprovementDirection,
   getMlRunColumnsWithAddedKeyMetrics,
   getMlRunColumnsWithKeyMetrics,
@@ -151,6 +152,37 @@ describe('getMlRunTags', () => {
   });
 });
 
+describe('getMlMetricDirectionsFromMetadata', () => {
+  it('normalizes explicit metric direction metadata', () => {
+    expect(
+      getMlMetricDirectionsFromMetadata({
+        metricDirections: {
+          loss: 'down',
+          psnr: 'up',
+          ignored: 'sideways',
+        },
+      })
+    ).toEqual({
+      loss: 'down',
+      psnr: 'up',
+    });
+  });
+
+  it('accepts snake case metadata from local SDK state', () => {
+    expect(
+      getMlMetricDirectionsFromMetadata({
+        metric_directions: {
+          lpips: 'lower',
+          ssim: 'higher',
+        },
+      })
+    ).toEqual({
+      lpips: 'down',
+      ssim: 'up',
+    });
+  });
+});
+
 describe('ML metric improvement detection', () => {
   it('treats loss-like metrics as lower-is-better', () => {
     expect(getMlMetricImprovementDirection('val_loss')).toBe('lower');
@@ -173,6 +205,24 @@ describe('ML metric improvement detection', () => {
       })
     ).toBe(true);
   });
+
+  it('uses explicit metric directions over name-based defaults', () => {
+    expect(
+      getMlMetricImprovementDirection('val_loss', {
+        val_loss: 'up',
+      })
+    ).toBe('higher');
+    expect(
+      hasMlMetricImproved({
+        metric: 'lpips',
+        previousValue: 0.3,
+        value: 0.2,
+        metricDirections: {
+          lpips: 'down',
+        },
+      })
+    ).toBe(true);
+  });
 });
 
 describe('logMlMetrics', () => {
@@ -183,6 +233,7 @@ describe('logMlMetrics', () => {
       mlProjectId: 'ml-project-id',
       name: 'Run 1',
       keyMetrics: ['loss', 'accuracy'],
+      metadata: {},
       summary: {
         loss: 0.5,
         accuracy: 0.9,
@@ -237,6 +288,55 @@ describe('logMlMetrics', () => {
     );
   });
 
+  it('emits improved events using explicit metric directions', async () => {
+    const createdAt = new Date('2026-07-02T10:30:00.000Z');
+    mocks.db.mlRun.findFirst.mockResolvedValue({
+      id: 'run-id',
+      mlProjectId: 'ml-project-id',
+      name: 'Run 1',
+      keyMetrics: ['lpips'],
+      metadata: {
+        metricDirections: {
+          lpips: 'down',
+        },
+      },
+      summary: {
+        lpips: 0.3,
+      },
+      status: 'running',
+      startedAt: createdAt,
+      mlProject: {
+        name: 'Compression',
+      },
+    });
+    mocks.db.mlRun.update.mockResolvedValue({});
+    mocks.bulkAdd.mockResolvedValue(undefined);
+    mocks.createEvent.mockResolvedValue({});
+    mocks.checkNotificationRulesForEvent.mockResolvedValue(undefined);
+
+    await logMlMetrics({
+      projectId: 'project-id',
+      runId: 'run-id',
+      metrics: {
+        lpips: 0.2,
+      },
+      step: 13,
+      createdAt,
+    });
+
+    expect(mocks.createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: ML_RUN_KEY_METRIC_IMPROVED_EVENT,
+        properties: expect.objectContaining({
+          metric: 'lpips',
+          value: 0.2,
+          previous_value: 0.3,
+          improvement_direction: 'lower',
+        }),
+      })
+    );
+  });
+
   it('emits a started event when metrics move a created run to running', async () => {
     const createdAt = new Date('2026-07-02T11:00:00.000Z');
     mocks.db.mlRun.findFirst.mockResolvedValue({
@@ -244,6 +344,7 @@ describe('logMlMetrics', () => {
       mlProjectId: 'ml-project-id',
       name: 'Run 1',
       keyMetrics: [],
+      metadata: {},
       summary: {},
       status: 'created',
       startedAt: null,
@@ -282,6 +383,69 @@ describe('logMlMetrics', () => {
 });
 
 describe('ML run status events', () => {
+  it('stores metric directions in run metadata when creating a run', async () => {
+    const startedAt = new Date('2026-07-02T11:30:00.000Z');
+    mocks.db.mlProject.findFirstOrThrow.mockResolvedValue({
+      organizationId: 'org-id',
+      name: 'Compression',
+      runColumns: [],
+    });
+    mocks.db.mlRun.create.mockResolvedValue({
+      id: 'run-id',
+      projectId: 'project-id',
+      mlProjectId: 'ml-project-id',
+      name: 'Run 1',
+      status: 'running',
+      startedAt,
+      endedAt: null,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+      tags: [],
+      metadata: {
+        dataset: 'val',
+        metricDirections: {
+          psnr: 'up',
+          lpips: 'down',
+        },
+      },
+      client: null,
+      mlProject: {
+        id: 'ml-project-id',
+        name: 'Compression',
+      },
+    });
+    mocks.createEvent.mockResolvedValue({});
+    mocks.checkNotificationRulesForEvent.mockResolvedValue(undefined);
+
+    await createMlRun({
+      projectId: 'project-id',
+      mlProjectId: 'ml-project-id',
+      name: 'Run 1',
+      status: 'running',
+      metadata: {
+        dataset: 'val',
+      },
+      metricDirections: {
+        psnr: 'up',
+        lpips: 'down',
+      },
+    });
+
+    expect(mocks.db.mlRun.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: {
+            dataset: 'val',
+            metricDirections: {
+              psnr: 'up',
+              lpips: 'down',
+            },
+          },
+        }),
+      })
+    );
+  });
+
   it('emits a started event when a run is created as running', async () => {
     const startedAt = new Date('2026-07-02T12:00:00.000Z');
     mocks.db.mlProject.findFirstOrThrow.mockResolvedValue({

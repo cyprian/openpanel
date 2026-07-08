@@ -13,6 +13,8 @@ import { createEvent } from './event.service';
 import { checkNotificationRulesForEvent } from './notification.service';
 
 export type MlRunSummary = Record<string, number>;
+export type MlMetricPerformanceDirection = 'up' | 'down';
+export type MlMetricDirections = Record<string, MlMetricPerformanceDirection>;
 
 type MlRunUpdateInput = {
   id: string;
@@ -24,6 +26,7 @@ type MlRunUpdateInput = {
   config?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   keyMetrics?: string[];
+  metricDirections?: MlMetricDirections;
 };
 
 const ML_RUN_COLUMN_METRIC_PREFIX = 'metric:';
@@ -359,6 +362,7 @@ export async function createMlRun(input: {
   config?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   keyMetrics?: string[];
+  metricDirections?: MlMetricDirections;
 }) {
   const mlProject = await db.mlProject.findFirstOrThrow({
     where: {
@@ -373,6 +377,11 @@ export async function createMlRun(input: {
     },
   });
   const keyMetrics = getUniqueStrings(input.keyMetrics ?? []);
+  const metricDirections =
+    input.metricDirections === undefined
+      ? undefined
+      : normalizeMlMetricDirections(input.metricDirections);
+  const metadata = getMlRunMetadata(input.metadata, metricDirections);
 
   if (keyMetrics.length > 0) {
     const runColumns = getMlRunColumnsWithAddedKeyMetrics(
@@ -402,9 +411,9 @@ export async function createMlRun(input: {
       status: input.status ?? 'created',
       startedAt: input.status === 'running' ? new Date() : undefined,
       notes: input.notes,
-      tags: getMlRunTags(input.tags, input.metadata),
+      tags: getMlRunTags(input.tags, metadata),
       config: input.config ?? {},
-      metadata: input.metadata ?? {},
+      metadata,
       keyMetrics,
       summary: {},
     },
@@ -453,6 +462,94 @@ export function getMlRunTagsFromMetadata(metadata: unknown) {
   return tags.filter((tag): tag is string => typeof tag === 'string' && !!tag);
 }
 
+export function getMlMetricDirectionsFromMetadata(metadata: unknown) {
+  const record = getRecord(metadata);
+  return normalizeMlMetricDirections(
+    record.metricDirections ??
+      record.metric_directions ??
+      record.performanceDirections ??
+      record.performance_directions
+  );
+}
+
+function getMlRunMetadata(
+  metadata: Record<string, unknown> | undefined,
+  metricDirections: MlMetricDirections | undefined
+) {
+  const base = metadata ?? {};
+  if (metricDirections === undefined) {
+    return base;
+  }
+
+  return {
+    ...base,
+    metricDirections,
+  };
+}
+
+function getUpdatedMlRunMetadata(input: {
+  currentMetadata: unknown;
+  metadata?: Record<string, unknown>;
+  metricDirections?: MlMetricDirections;
+}) {
+  if (input.metadata === undefined && input.metricDirections === undefined) {
+    return undefined;
+  }
+
+  const metricDirections =
+    input.metricDirections === undefined
+      ? undefined
+      : normalizeMlMetricDirections(input.metricDirections);
+
+  return getMlRunMetadata(
+    input.metadata ?? getRecord(input.currentMetadata),
+    metricDirections
+  );
+}
+
+function normalizeMlMetricDirections(value: unknown): MlMetricDirections {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const result: MlMetricDirections = {};
+  for (const [metric, direction] of Object.entries(value)) {
+    const normalizedDirection = normalizeMlMetricDirection(direction);
+    if (metric && normalizedDirection) {
+      result[metric] = normalizedDirection;
+    }
+  }
+
+  return result;
+}
+
+function normalizeMlMetricDirection(
+  value: unknown
+): MlMetricPerformanceDirection | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.toLowerCase();
+  if (normalized === 'up' || normalized === 'higher') {
+    return 'up';
+  }
+
+  if (normalized === 'down' || normalized === 'lower') {
+    return 'down';
+  }
+
+  return null;
+}
+
+function getRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
 function withMlRunDisplayTags<T extends { tags: string[]; metadata: unknown }>(
   run: T
 ) {
@@ -467,6 +564,7 @@ function withMlRunDisplayTags<T extends { tags: string[]; metadata: unknown }>(
 export function isKeyMetricsOnlyMlRunUpdate(input: MlRunUpdateInput) {
   return (
     input.keyMetrics !== undefined &&
+    input.metricDirections === undefined &&
     input.name === undefined &&
     input.status === undefined &&
     input.notes === undefined &&
@@ -485,6 +583,11 @@ export async function updateMlRun(input: MlRunUpdateInput) {
     input.keyMetrics === undefined
       ? undefined
       : getUniqueStrings(input.keyMetrics);
+  const metadata = getUpdatedMlRunMetadata({
+    currentMetadata: run.metadata,
+    metadata: input.metadata,
+    metricDirections: input.metricDirections,
+  });
 
   const endedAt =
     input.status && ['finished', 'failed', 'crashed'].includes(input.status)
@@ -503,7 +606,7 @@ export async function updateMlRun(input: MlRunUpdateInput) {
       notes: input.notes,
       tags: input.tags,
       config: input.config,
-      metadata: input.metadata,
+      metadata,
       keyMetrics,
       startedAt,
       endedAt,
@@ -753,6 +856,7 @@ export async function logMlMetrics(input: {
       mlProjectId: true,
       name: true,
       keyMetrics: true,
+      metadata: true,
       summary: true,
       status: true,
       startedAt: true,
@@ -773,10 +877,12 @@ export async function logMlMetrics(input: {
     ...input.metrics,
   };
   const step = input.step ?? Date.now();
+  const metricDirections = getMlMetricDirectionsFromMetadata(run.metadata);
   const improvedKeyMetrics = getImprovedMlRunKeyMetrics({
     keyMetrics: run.keyMetrics,
     previousSummary,
     metrics: input.metrics,
+    metricDirections,
   });
 
   await Promise.all([
@@ -836,8 +942,17 @@ export async function logMlMetrics(input: {
 export type MlMetricImprovementDirection = 'higher' | 'lower';
 
 export function getMlMetricImprovementDirection(
-  metric: string
+  metric: string,
+  metricDirections?: MlMetricDirections
 ): MlMetricImprovementDirection {
+  const explicitDirection = metricDirections?.[metric];
+  if (explicitDirection === 'down') {
+    return 'lower';
+  }
+  if (explicitDirection === 'up') {
+    return 'higher';
+  }
+
   return LOWER_IS_BETTER_ML_METRIC_PATTERNS.some((pattern) =>
     pattern.test(metric)
   )
@@ -849,12 +964,16 @@ export function hasMlMetricImproved(input: {
   metric: string;
   previousValue: number;
   value: number;
+  metricDirections?: MlMetricDirections;
 }) {
   if (!Number.isFinite(input.previousValue) || !Number.isFinite(input.value)) {
     return false;
   }
 
-  const direction = getMlMetricImprovementDirection(input.metric);
+  const direction = getMlMetricImprovementDirection(
+    input.metric,
+    input.metricDirections
+  );
   return direction === 'lower'
     ? input.value < input.previousValue
     : input.value > input.previousValue;
@@ -864,6 +983,7 @@ function getImprovedMlRunKeyMetrics(input: {
   keyMetrics: string[];
   previousSummary: MlRunSummary;
   metrics: Record<string, number>;
+  metricDirections: MlMetricDirections;
 }) {
   const keyMetrics = new Set(input.keyMetrics);
 
@@ -875,12 +995,20 @@ function getImprovedMlRunKeyMetrics(input: {
     const previousValue = input.previousSummary[metric];
     if (
       typeof previousValue !== 'number' ||
-      !hasMlMetricImproved({ metric, previousValue, value })
+      !hasMlMetricImproved({
+        metric,
+        previousValue,
+        value,
+        metricDirections: input.metricDirections,
+      })
     ) {
       return [];
     }
 
-    const direction = getMlMetricImprovementDirection(metric);
+    const direction = getMlMetricImprovementDirection(
+      metric,
+      input.metricDirections
+    );
     const improvement =
       direction === 'lower' ? previousValue - value : value - previousValue;
     const relativeImprovement =

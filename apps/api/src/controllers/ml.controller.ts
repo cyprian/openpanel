@@ -11,7 +11,11 @@ import {
   resolveMlProject,
   updateMlRun,
 } from '@openpanel/db';
-import { zMlEvaluationLog, zMlImageLog } from '@openpanel/validation';
+import {
+  zMlEvaluationLog,
+  zMlImageLog,
+  zMlMetricDirections,
+} from '@openpanel/validation';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import sharp from 'sharp';
 import { z } from 'zod';
@@ -31,6 +35,7 @@ export const zCreateMlRun = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
   metadata: z.record(z.string(), z.unknown()).default({}),
   keyMetrics: z.array(z.string().min(1)).optional(),
+  metricDirections: zMlMetricDirections.optional(),
 });
 
 export const zUpdateMlRun = z.object({
@@ -43,6 +48,7 @@ export const zUpdateMlRun = z.object({
   tags: z.array(z.string().min(1)).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  metricDirections: zMlMetricDirections.optional(),
 });
 
 export const zLogMlMetrics = z.object({
@@ -89,6 +95,7 @@ export async function createRun(
     config: request.body.config,
     metadata: request.body.metadata,
     keyMetrics: request.body.keyMetrics,
+    metricDirections: request.body.metricDirections,
   });
 
   return reply.status(201).send({

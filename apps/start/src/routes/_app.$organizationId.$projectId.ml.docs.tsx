@@ -149,6 +149,7 @@ run = opml.init(
     project="eyepic-iris-detection-mobile",
     experiment="iris-unet-baseline-001",
     key_metrics=["loss", "iou", "dice"],
+    metric_directions={"loss": "down", "iou": "up", "dice": "up"},
     tags=["baseline", "64x64"],
     config={
         "model": "UNet",
@@ -192,9 +193,9 @@ run = opml.init(
 | Install with PyPI fallback | \`python -m pip install --extra-index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Upgrade package | \`python -m pip install --upgrade --index-url https://analytics.eyepic.io/packages/simple openpanel-ml\` |
 | Install secure-storage extra | \`python -m pip install "openpanel-ml[secure-storage]"\` |
-| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.9"\` |
+| Install from GitHub tag | \`python -m pip install "openpanel-ml @ git+https://github.com/cyprian/openpanel-python-ml.git@openpanel-ml-v0.0.10"\` |
 
-Current published version: \`0.0.9\`.
+Current published version: \`0.0.10\`.
 
 ## Authentication
 
@@ -229,7 +230,8 @@ run = opml.init(
     project="eyepic-iris-detection-mobile",
     experiment="experiment-name",
     name="experiment-name",
-    key_metrics=["loss", "iou", "dice"],
+    key_metrics=["loss", "psnr", "ssim"],
+    metric_directions={"loss": "down", "psnr": "up", "ssim": "up"},
     config={
         "model": "your-model",
         "learning_rate": 1e-4,
@@ -244,8 +246,8 @@ try:
         run.log(
             {
                 "loss": metrics["loss"],
-                "iou": metrics["iou"],
-                "dice": metrics["dice"],
+                "psnr": metrics["psnr"],
+                "ssim": metrics["ssim"],
             },
             step=step,
         )
@@ -287,11 +289,14 @@ Use \`key_metrics\` when you initialize a run to highlight important final metri
 run = opml.init(
     project="eyepic-iris-detection-mobile",
     experiment="mobile-unet-v2",
-    key_metrics=["loss", "iou", "dice"],
+    key_metrics=["loss", "psnr", "ssim"],
+    metric_directions={"loss": "down", "psnr": "up", "ssim": "up"},
 )
 \`\`\`
 
 Key metrics stay in sync with project run columns. Adding a key metric from a run detail page adds it as a project table column, and selecting a metric column in the project table makes it a key metric for runs in that project.
+
+Use \`metric_directions\` to tell OpenPanel whether a metric improves when it goes up or down. Directions are optional; when omitted, OpenPanel infers common lower-is-better metric names such as \`loss\`, \`error\`, \`latency\`, and \`cost\`, and treats other metrics as up. Explicit directions are shown as arrows on key metric cards, final metric cards, and metric chart titles, and they also drive key metric improvement events.
 
 ## Visual outputs
 
@@ -453,7 +458,7 @@ run = opml.init(project="eyepic-iris-detection-mobile", resume=True)
 
 ## Finish runs
 
-Always finish a run so dashboards can separate finished, running, and failed experiments cleanly.
+Always finish a run so dashboards can separate finished, running, failed, and canceled experiments cleanly.
 
 \`\`\`python
 run.finish("finished")
@@ -465,6 +470,12 @@ Use \`failed\` when a training job exits unsuccessfully:
 
 \`\`\`python
 run.finish("failed")
+\`\`\`
+
+Use \`canceled\` when a run is intentionally stopped before completion:
+
+\`\`\`python
+run.finish("canceled")
 \`\`\`
 
 ## Dashboard areas

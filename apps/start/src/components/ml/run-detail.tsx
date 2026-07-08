@@ -45,8 +45,10 @@ import {
 import { Link, useNavigate } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import {
+  ArrowDownIcon,
   ArrowLeftRightIcon,
   ArrowLeftIcon,
+  ArrowUpIcon,
   BracesIcon,
   DatabaseIcon,
   KeyIcon,
@@ -79,6 +81,24 @@ const KEY_METRIC_COLORS = [
 ];
 const ML_RUN_COLUMN_METRIC_PREFIX = 'metric:';
 const ML_STANDARD_RUN_COLUMNS = new Set(['apiSource', 'tags']);
+const LOWER_IS_BETTER_ML_METRIC_PATTERNS = [
+  /(^|[_\s/.-])loss($|[_\s/.-])/i,
+  /(^|[_\s/.-])error($|[_\s/.-])/i,
+  /(^|[_\s/.-])err($|[_\s/.-])/i,
+  /(^|[_\s/.-])mae($|[_\s/.-])/i,
+  /(^|[_\s/.-])mse($|[_\s/.-])/i,
+  /(^|[_\s/.-])rmse($|[_\s/.-])/i,
+  /(^|[_\s/.-])mape($|[_\s/.-])/i,
+  /(^|[_\s/.-])nll($|[_\s/.-])/i,
+  /(^|[_\s/.-])perplexity($|[_\s/.-])/i,
+  /(^|[_\s/.-])ppl($|[_\s/.-])/i,
+  /(^|[_\s/.-])wer($|[_\s/.-])/i,
+  /(^|[_\s/.-])cer($|[_\s/.-])/i,
+  /(^|[_\s/.-])latency($|[_\s/.-])/i,
+  /(^|[_\s/.-])duration($|[_\s/.-])/i,
+  /(^|[_\s/.-])time($|[_\s/.-])/i,
+  /(^|[_\s/.-])cost($|[_\s/.-])/i,
+];
 
 export function MlRunDetail({
   organizationId,
@@ -180,6 +200,12 @@ export function MlRunDetail({
   });
   const summary = normalizeNumberRecord(run.data?.summary);
   const visibleSummary = filterZeroMetrics(summary, showZeroMetricValues);
+  const config = normalizeRecord(run.data?.config);
+  const metadata = normalizeRecord(run.data?.metadata);
+  const metricDirections = useMemo(
+    () => normalizeMetricDirections(metadata),
+    [metadata]
+  );
   const keyMetrics = selectedKeyMetrics.filter(
     (metric) => visibleSummary[metric] !== undefined
   );
@@ -212,6 +238,7 @@ export function MlRunDetail({
       return [
         {
           color: keyMetricTextColors.get(metric) ?? getKeyMetricColor(index),
+          direction: getMetricPerformanceDirection(metric, metricDirections),
           metric,
           query,
         },
@@ -227,6 +254,10 @@ export function MlRunDetail({
     .filter((item) => !keyMetricChartNameSet.has(item.metric))
     .map((item) => ({
       color: ML_CHART_BLUE,
+      direction: getMetricPerformanceDirection(
+        item.metric,
+        metricDirections
+      ),
       metric: item.metric,
       query: metricSeriesQueryByName.get(item.metric),
     }))
@@ -240,8 +271,6 @@ export function MlRunDetail({
       : regularMetricChartItems;
   const shouldShowRegularMetricSection =
     !shouldCollapseOtherMetricCharts || showOtherMetricCharts;
-  const config = normalizeRecord(run.data?.config);
-  const metadata = normalizeRecord(run.data?.metadata);
   const mlProjectId = contextMlProjectId;
   const hasEvaluationRows = (evaluationSummary.data?.total ?? 0) > 0;
 
@@ -456,6 +485,7 @@ export function MlRunDetail({
           <MetricsGrid
             chartMetricNames={metricItems.map((item) => item.metric)}
             keyMetrics={selectedKeyMetrics}
+            metricDirections={metricDirections}
             metricTextColors={keyMetricTextColors}
             metrics={Object.fromEntries(
               keyMetrics.map((metric) => [metric, visibleSummary[metric]])
@@ -511,6 +541,7 @@ export function MlRunDetail({
               : 'No non-zero scalar metrics to display.'
           }
           keyMetrics={selectedKeyMetrics}
+          metricDirections={metricDirections}
           metrics={visibleSummary}
           onMetricChartClick={handleMetricChartClick}
           onToggleKeyMetric={toggleKeyMetric}
@@ -623,9 +654,13 @@ type MetricSeriesQueryResult = {
 
 type MetricChartItem = {
   color: string;
+  direction: MetricPerformanceDirection;
   metric: string;
   query?: MetricSeriesQueryResult;
 };
+
+type MetricPerformanceDirection = 'up' | 'down';
+type MetricDirections = Record<string, MetricPerformanceDirection>;
 
 function ViewSettingsDialog({
   onShowZeroMetricChartsChange,
@@ -688,6 +723,7 @@ function MetricsGrid({
   chartMetricNames,
   emptyText = 'No scalar metrics have been logged for this run yet.',
   keyMetrics,
+  metricDirections,
   metricTextColors,
   metrics,
   onMetricChartClick,
@@ -697,6 +733,7 @@ function MetricsGrid({
   chartMetricNames: string[];
   emptyText?: string;
   keyMetrics: string[];
+  metricDirections: MetricDirections;
   metricTextColors?: Map<string, string>;
   metrics: Record<string, number>;
   onMetricChartClick: (metric: string) => void;
@@ -721,6 +758,10 @@ function MetricsGrid({
         const hasChart = chartMetricNameSet.has(key);
         const isKeyMetric = keyMetricSet.has(key);
         const textColor = metricTextColors?.get(key);
+        const direction = getMetricPerformanceDirection(
+          key,
+          metricDirections
+        );
 
         return (
           <article
@@ -749,7 +790,10 @@ function MetricsGrid({
               onClick={() => onMetricChartClick(key)}
               type="button"
             >
-              <div className="truncate text-muted-foreground text-xs">{key}</div>
+              <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
+                <span className="truncate">{key}</span>
+                <MetricDirectionIndicator direction={direction} />
+              </div>
               <div
                 className="mt-1 truncate font-mono font-semibold text-lg"
                 style={{ color: textColor }}
@@ -819,7 +863,10 @@ function MetricChartsSection({
               >
                 <div className="flex min-h-14 flex-wrap items-center gap-2 border-b p-4">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{item.metric}</div>
+                    <div className="flex min-w-0 items-center gap-1.5 font-medium">
+                      <span className="truncate">{item.metric}</span>
+                      <MetricDirectionIndicator direction={item.direction} />
+                    </div>
                     <div className="text-muted-foreground text-xs">
                       {data.length} points
                     </div>
@@ -845,6 +892,27 @@ function MetricChartsSection({
         </div>
       )}
     </section>
+  );
+}
+
+function MetricDirectionIndicator({
+  direction,
+}: {
+  direction: MetricPerformanceDirection;
+}) {
+  const Icon = direction === 'up' ? ArrowUpIcon : ArrowDownIcon;
+  const label =
+    direction === 'up' ? 'Higher values are better' : 'Lower values are better';
+
+  return (
+    <span
+      aria-label={label}
+      className="inline-flex shrink-0 text-muted-foreground"
+      role="img"
+      title={label}
+    >
+      <Icon aria-hidden="true" className="size-3" />
+    </span>
   );
 }
 
@@ -1483,6 +1551,61 @@ function normalizeNumberRecord(value: unknown): Record<string, number> {
   }
 
   return result;
+}
+
+function normalizeMetricDirections(value: unknown): MetricDirections {
+  const record = normalizeRecord(value);
+  const rawDirections =
+    record.metricDirections ??
+    record.metric_directions ??
+    record.performanceDirections ??
+    record.performance_directions;
+  const directionRecord = normalizeRecord(rawDirections);
+  const result: MetricDirections = {};
+
+  for (const [metric, direction] of Object.entries(directionRecord)) {
+    const normalizedDirection = normalizeMetricDirection(direction);
+    if (normalizedDirection) {
+      result[metric] = normalizedDirection;
+    }
+  }
+
+  return result;
+}
+
+function normalizeMetricDirection(
+  value: unknown
+): MetricPerformanceDirection | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.toLowerCase();
+  if (normalized === 'up' || normalized === 'higher') {
+    return 'up';
+  }
+
+  if (normalized === 'down' || normalized === 'lower') {
+    return 'down';
+  }
+
+  return null;
+}
+
+function getMetricPerformanceDirection(
+  metric: string,
+  metricDirections: MetricDirections
+): MetricPerformanceDirection {
+  const explicitDirection = metricDirections[metric];
+  if (explicitDirection) {
+    return explicitDirection;
+  }
+
+  return LOWER_IS_BETTER_ML_METRIC_PATTERNS.some((pattern) =>
+    pattern.test(metric)
+  )
+    ? 'down'
+    : 'up';
 }
 
 function filterZeroMetrics(

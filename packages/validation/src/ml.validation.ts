@@ -8,6 +8,12 @@ export const zMlRunStatus = z.enum([
   'crashed',
 ]);
 
+export const zMlMetricDirection = z.enum(['up', 'down']);
+export const zMlMetricDirections = z.record(
+  z.string().min(1),
+  zMlMetricDirection
+);
+
 export const zMlProjectCreate = z.object({
   projectId: z.string(),
   name: z.string().min(1),
@@ -32,6 +38,7 @@ export const zMlRunCreate = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
   metadata: z.record(z.string(), z.unknown()).default({}),
   keyMetrics: z.array(z.string().min(1)).optional(),
+  metricDirections: zMlMetricDirections.optional(),
 });
 
 export const zMlRunUpdate = z.object({
@@ -44,6 +51,7 @@ export const zMlRunUpdate = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   keyMetrics: z.array(z.string().min(1)).optional(),
+  metricDirections: zMlMetricDirections.optional(),
 });
 
 export const zMlMetricLog = z.object({
@@ -85,6 +93,8 @@ export const zMlEvaluationLog = z.object({
 });
 
 export type IMlRunStatus = z.infer<typeof zMlRunStatus>;
+export type IMlMetricDirection = z.infer<typeof zMlMetricDirection>;
+export type IMlMetricDirections = z.infer<typeof zMlMetricDirections>;
 export type IMlMetricLog = z.infer<typeof zMlMetricLog>;
 export type IMlImageName = z.infer<typeof zMlImageName>;
 export type IMlImageLog = z.infer<typeof zMlImageLog>;
