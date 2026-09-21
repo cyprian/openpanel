@@ -11,6 +11,7 @@ import {
   hasMlMetricImproved,
   isKeyMetricsOnlyMlRunUpdate,
   logMlMetrics,
+  listMlProjects,
   ML_RUN_ERROR_EVENT,
   ML_RUN_KEY_METRIC_IMPROVED_EVENT,
   ML_RUN_STARTED_EVENT,
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   checkNotificationRulesForEvent: vi.fn(),
   db: {
     mlProject: {
+      findMany: vi.fn(),
       findFirstOrThrow: vi.fn(),
       update: vi.fn(),
     },
@@ -30,6 +32,9 @@ const mocks = vi.hoisted(() => ({
       create: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
+    },
+    mlImage: {
+      groupBy: vi.fn(),
     },
   },
 }));
@@ -59,6 +64,41 @@ vi.mock('./notification.service', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe('listMlProjects storage', () => {
+  it('attaches local image totals to the correct project and defaults empty projects to zero', async () => {
+    mocks.db.mlProject.findMany.mockResolvedValue([
+      { id: 'ml-a', name: 'A' },
+      { id: 'ml-b', name: 'B' },
+      { id: 'ml-c', name: 'C' },
+    ]);
+    mocks.db.mlImage.groupBy.mockResolvedValue([
+      { mlProjectId: 'ml-b', _sum: { sizeBytes: 3_500_000_000 } },
+      { mlProjectId: 'ml-a', _sum: { sizeBytes: 125 } },
+    ]);
+
+    expect(await listMlProjects('project-id')).toEqual([
+      { id: 'ml-a', name: 'A', storageBytes: 125 },
+      { id: 'ml-b', name: 'B', storageBytes: 3_500_000_000 },
+      { id: 'ml-c', name: 'C', storageBytes: 0 },
+    ]);
+    expect(mocks.db.mlImage.groupBy).toHaveBeenCalledWith({
+      by: ['mlProjectId'],
+      where: {
+        projectId: 'project-id',
+        mlProjectId: { in: ['ml-a', 'ml-b', 'ml-c'] },
+        storageProvider: 'local',
+      },
+      _sum: { sizeBytes: true },
+    });
+  });
+
+  it('skips storage aggregation when there are no visible projects', async () => {
+    mocks.db.mlProject.findMany.mockResolvedValue([]);
+    expect(await listMlProjects('project-id')).toEqual([]);
+    expect(mocks.db.mlImage.groupBy).not.toHaveBeenCalled();
+  });
 });
 
 describe('isKeyMetricsOnlyMlRunUpdate', () => {

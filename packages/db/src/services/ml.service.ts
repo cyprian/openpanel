@@ -74,7 +74,7 @@ export function getMlImageStoragePath(storageKey: string) {
 }
 
 export async function listMlProjects(projectId: string) {
-  return db.mlProject.findMany({
+  const projects = await db.mlProject.findMany({
     where: {
       projectId,
       archivedAt: null,
@@ -96,6 +96,28 @@ export async function listMlProjects(projectId: string) {
       updatedAt: 'desc',
     },
   });
+
+  if (projects.length === 0) {
+    return [];
+  }
+
+  const storage = await db.mlImage.groupBy({
+    by: ['mlProjectId'],
+    where: {
+      projectId,
+      mlProjectId: { in: projects.map((project) => project.id) },
+      storageProvider: ML_IMAGE_STORAGE_PROVIDER_LOCAL,
+    },
+    _sum: { sizeBytes: true },
+  });
+  const storageByProject = new Map(
+    storage.map((item) => [item.mlProjectId, item._sum.sizeBytes ?? 0]),
+  );
+
+  return projects.map((project) => ({
+    ...project,
+    storageBytes: storageByProject.get(project.id) ?? 0,
+  }));
 }
 
 export async function getMlProjectById(input: {

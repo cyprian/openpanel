@@ -55,7 +55,10 @@ function MlProjectsIndex() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [name, setName] = useState('');
-  const projects = useQuery(trpc.ml.projects.queryOptions({ projectId }));
+  const projects = useQuery({
+    ...trpc.ml.projects.queryOptions({ projectId }),
+    refetchInterval: 60_000,
+  });
   useMlPageContext('mlProjects', undefined, {
     visibleProjectCount: projects.data?.length ?? 0,
   });
@@ -112,6 +115,9 @@ function MlProjectsIndex() {
               <TableHead>Name</TableHead>
               <TableHead>API source</TableHead>
               <TableHead>Runs</TableHead>
+              <TableHead className="text-right" title="Uploaded images stored locally. Excludes shared database overhead. 1 GB = 1,000,000,000 bytes.">
+                Disk usage (GB)
+              </TableHead>
               <TableHead>Updated</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -133,6 +139,11 @@ function MlProjectsIndex() {
                   <MlApiSourceCell name={item.client?.name} />
                 </TableCell>
                 <TableCell>{item._count.runs}</TableCell>
+                <TableCell className="text-right tabular-nums" title={`${item.storageBytes.toLocaleString()} bytes of locally stored images`}>
+                  {item.storageBytes > 0 && item.storageBytes < 10_000_000
+                    ? '<0.01'
+                    : (item.storageBytes / 1_000_000_000).toFixed(2)}
+                </TableCell>
                 <TableCell>
                   {formatDistanceToNow(item.updatedAt, { addSuffix: true })}
                 </TableCell>
@@ -148,7 +159,7 @@ function MlProjectsIndex() {
             ))}
             {projects.data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center">
+                <TableCell colSpan={6} className="py-10 text-center">
                   <div className="mx-auto max-w-sm">
                     <div className="font-medium">No ML projects yet</div>
                     <p className="mt-1 text-muted-foreground text-sm">
