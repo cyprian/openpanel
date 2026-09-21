@@ -1,4 +1,5 @@
 import { MlStatusBadge } from '@/components/ml/status-badge';
+import { SettingsInspector } from '@/components/ml/settings-inspector';
 import { MlRunActions } from '@/components/ml/run-actions';
 import { Markdown } from '@/components/markdown';
 import { PageContainer } from '@/components/page-container';
@@ -1728,7 +1729,7 @@ function JsonDialogButton({
           {title}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl" showCloseButton>
+      <DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-4xl" showCloseButton>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -1737,9 +1738,7 @@ function JsonDialogButton({
             {emptyText}
           </div>
         ) : (
-          <pre className="max-h-[70vh] overflow-auto rounded-md bg-background p-3 text-xs">
-            {JSON.stringify(value, null, 2)}
-          </pre>
+          <SettingsInspector value={value} />
         )}
       </DialogContent>
     </Dialog>
