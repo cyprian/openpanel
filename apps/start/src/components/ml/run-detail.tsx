@@ -1827,6 +1827,7 @@ function MetricChart({
           <YAxis
             axisLine={false}
             className="font-mono"
+            domain={['auto', 'auto']}
             label={{
               value: metric,
               angle: -90,
