@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { MlApiSourceCell } from '@/components/ml/api-source-cell';
+import { getBestMetricValues } from '@/components/ml/best-metric-values';
 import { MlRunActions } from '@/components/ml/run-actions';
 import { MlRunTags } from '@/components/ml/run-tags';
 import { MlStatusBadge } from '@/components/ml/status-badge';
@@ -155,6 +156,10 @@ function MlProjectRunsIndex() {
   const syncedRunColumnsKey = syncedRunColumns.join('\u0000');
   const visibleMetricColumns = availableMetricColumns.filter((metric) =>
     selectedRunColumns.includes(getMetricColumnId(metric))
+  );
+  const bestMetricValues = useMemo(
+    () => getBestMetricValues(runs.data ?? [], availableMetricColumns),
+    [runs.data, availableMetricColumns]
   );
   const showApiSourceColumn = selectedRunColumns.includes(
     RUN_COLUMN_API_SOURCE
@@ -438,13 +443,28 @@ function MlProjectRunsIndex() {
                     <MlRunTags tags={run.tags} />
                   </TableCell>
                 )}
-                {visibleMetricColumns.map((metric) => (
-                  <TableCell className="text-right font-mono" key={metric}>
-                    {formatMetricValue(
-                      normalizeNumberRecord(run.summary)[metric]
-                    )}
-                  </TableCell>
-                ))}
+                {visibleMetricColumns.map((metric) => {
+                  const value = normalizeNumberRecord(run.summary)[metric];
+                  const best = bestMetricValues.get(metric);
+                  const isBest = best !== undefined && value === best.value;
+                  const bestLabel = isBest
+                    ? `Best ${metric}: ${best.direction === 'down' ? 'lower' : 'higher'} is better`
+                    : undefined;
+                  return (
+                    <TableCell className="text-right font-mono" key={metric}>
+                      <span
+                        className={cn(
+                          'inline-block rounded-md border border-transparent px-2 py-1',
+                          isBest && 'border-green-500'
+                        )}
+                        title={bestLabel}
+                      >
+                        {formatMetricValue(value)}
+                        {isBest && <span className="sr-only"> ({bestLabel})</span>}
+                      </span>
+                    </TableCell>
+                  );
+                })}
                 <TableCell>
                   {formatDistanceToNow(run.updatedAt, { addSuffix: true })}
                 </TableCell>
