@@ -40,6 +40,7 @@ const navigationItems = [
   { href: '#offline-and-sync', label: 'Offline sync' },
   { href: '#finish-runs', label: 'Finish runs' },
   { href: '#dashboard-areas', label: 'Dashboard areas' },
+  { href: '#dashboard-links', label: 'Dashboard links' },
   { href: '#storage', label: 'Storage' },
   { href: '#http-api', label: 'HTTP API' },
 ] as const;
@@ -496,6 +497,26 @@ run.finish("canceled")
 | Images | named visual outputs attached to runs |
 | Compare | overlaid metric charts, hyperparameters, metadata, and final metrics |
 
+## Dashboard links
+
+When sharing a run with a user, use its dashboard URL. **HTTP API endpoints are not dashboard links.** Prefer the \`dashboard_url\` returned by ML tools when available instead of constructing a URL yourself.
+
+The dashboard run URL pattern is:
+
+\`\`\`text
+https://analytics.eyepic.io/{organizationId}/{projectId}/ml/projects/{mlProjectId}/runs/{runId}
+\`\`\`
+
+Copy \`organizationId\` and \`projectId\` from the current dashboard URL. These identify the OpenPanel organization and project; \`mlProjectId\` identifies the ML experiment project that owns the run. Do not substitute the OpenPanel project identifier for \`mlProjectId\` or guess missing identifiers.
+
+For example, when viewing these docs at \`/eyepic/image-restoration/ml/docs\`, a run link is:
+
+\`\`\`text
+https://analytics.eyepic.io/eyepic/image-restoration/ml/projects/901c166b-7210-4e49-83d5-c2eb7cb7fd18/runs/a7e12219-153b-45a4-9104-0f66b417a4d5
+\`\`\`
+
+Replace the example ML project and run IDs with the actual IDs. A URL such as \`https://analytics.eyepic.io/ml/runs/{runId}\` is not a valid dashboard link because it omits the organization and OpenPanel project context.
+
 ## Storage
 
 Self-hosted OpenPanel stores uploaded ML images on the server by default. Configure the ML storage directory with:
@@ -513,6 +534,8 @@ https://analytics.eyepic.io/packages/simple
 \`\`\`
 
 ## HTTP API
+
+These endpoints are for SDK or authenticated HTTP requests, not browser navigation. To share a clickable run page, use the URL pattern in [Dashboard links](#dashboard-links).
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
