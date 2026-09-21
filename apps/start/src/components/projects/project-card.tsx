@@ -8,7 +8,7 @@ import type { IServiceProject } from '@openpanel/db';
 import { cn } from '@/utils/cn';
 import { formatDistanceToNow } from 'date-fns';
 import {
-  NetworkIcon,
+  BrainCircuitIcon,
   SettingsIcon,
   TrendingDownIcon,
   TrendingUpIcon,
@@ -118,7 +118,7 @@ function ProjectMlPreview({ projectId }: { projectId: string }) {
   return (
     <div className="h-full border-y bg-def-100 px-4 py-3">
       <div className="row gap-2 text-muted-foreground text-sm">
-        <NetworkIcon className="size-4" />
+        <BrainCircuitIcon className="size-4" />
         <span className="font-medium">Latest experiments</span>
       </div>
       {runs.isLoading ? (

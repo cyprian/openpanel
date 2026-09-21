@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
   MonitorIcon,
-  NetworkIcon,
+  BrainCircuitIcon,
   SaveIcon,
   ServerIcon,
   SmartphoneIcon,
@@ -153,7 +153,7 @@ export default function AddProject() {
       key: 'ml' as const,
       label: 'ML',
       description: 'Track machine learning experiments, runs, metrics, and artifacts',
-      Icon: NetworkIcon,
+      Icon: BrainCircuitIcon,
       active: isMl,
       disabled: isWebsite || isApp || isBackend,
     },

@@ -14,7 +14,7 @@ import {
   LayersIcon,
   LayoutDashboardIcon,
   LayoutPanelTopIcon,
-  NetworkIcon,
+  BrainCircuitIcon,
   PlusIcon,
   SearchIcon,
   SparklesIcon,
@@ -54,7 +54,7 @@ export default function SidebarProjectMenu({
         <div className="mb-2 font-medium text-muted-foreground text-sm">
           Experiments
         </div>
-        <SidebarLink href={'/ml'} icon={NetworkIcon} label="ML Projects" />
+        <SidebarLink href={'/ml'} icon={BrainCircuitIcon} label="ML Projects" />
         <SidebarLink href={'/ml/runs'} icon={ChartLineIcon} label="Runs" />
         <SidebarLink href={'/ml/docs'} icon={BookOpenIcon} label="Docs" />
         <div className="mt-4 mb-2 font-medium text-muted-foreground text-sm">

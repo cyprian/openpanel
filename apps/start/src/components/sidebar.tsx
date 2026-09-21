@@ -7,7 +7,8 @@ import { useChatState } from './chat/chat-context';
 import { FeedbackButton } from './feedback-button';
 import { LogoSquare } from './logo';
 import { ProfileToggle } from './profile-toggle';
-import ProjectSelector from './project-selector';
+import OrganizationSelector from './organization-selector';
+import { SidebarProjects } from './sidebar-projects';
 import SidebarOrganizationMenu, {
   ActionCTAButton as ActionOrganizationCTAButton,
 } from './sidebar-organization-menu';
@@ -89,7 +90,7 @@ export function SidebarContainer({
   const [active, setActive] = useState(false);
   const location = useLocation();
   const { isSelfHosted } = useAppContext();
-  const { projectId } = useParams({ strict: false });
+  const { organizationId, projectId } = useParams({ strict: false });
   const { isOpen: chatOpen, openChatForContext, closeChat } = useChatState();
   const project = projects.find((item) => item.id === projectId);
 
@@ -129,10 +130,9 @@ export function SidebarContainer({
           <Link to="/">
             <LogoSquare className="max-h-8" src={project?.logo} />
           </Link>
-          <ProjectSelector
+          <OrganizationSelector
             align="start"
             organizations={organizations}
-            projects={projects}
           />
         </div>
         <div
@@ -141,6 +141,7 @@ export function SidebarContainer({
             "[&_a[data-status='active']]:bg-def-200",
           ])}
         >
+          <SidebarProjects key={organizationId} projects={projects} />
           {children}
         </div>
         <div className="relative">
