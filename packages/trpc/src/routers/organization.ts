@@ -15,6 +15,7 @@ import { generateSecureId } from '@openpanel/common/server';
 import { sendEmail } from '@openpanel/email';
 import { addDays, addHours } from 'date-fns';
 import { getOrganizationAccess } from '../access';
+import { getDiskUsage } from '../services/disk-usage';
 import { TRPCForbiddenError, TRPCBadRequestError } from '../errors';
 import {
   createTRPCRouter,
@@ -25,6 +26,12 @@ import {
 } from '../trpc';
 
 export const organizationRouter = createTRPCRouter({
+  diskUsage: protectedProcedure
+    .input(z.object({ organizationId: z.string() }))
+    .query(async () => {
+      return await getDiskUsage();
+    }),
+
   get: protectedProcedure
     .input(z.object({ organizationId: z.string() }))
     .query(async ({ input }) => {

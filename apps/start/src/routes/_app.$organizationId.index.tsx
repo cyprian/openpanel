@@ -1,6 +1,7 @@
 import { FullPageEmptyState } from '@/components/full-page-empty-state';
 import FullPageLoadingState from '@/components/full-page-loading-state';
 import { LazyComponent } from '@/components/lazy-component';
+import { DiskUsage } from '@/components/organization/disk-usage';
 import { PageHeader } from '@/components/page-header';
 import ProjectCard, {
   ProjectCardSkeleton,
@@ -51,21 +52,24 @@ function OrganizationPage() {
 
   if (!projects?.length) {
     return (
-      <FullPageEmptyState
-        title="No projects found"
-        description={
-          isAdmin
-            ? 'Create your first project to get started with analytics.'
-            : 'You do not have access to any projects in this organization yet. Ask an admin to grant you access.'
-        }
-        icon={BoxSelectIcon}
-      >
-        {isAdmin && (
-          <Button icon={PlusIcon} onClick={() => pushModal('AddProject')}>
-            Create project
-          </Button>
-        )}
-      </FullPageEmptyState>
+      <div className="container p-8">
+        <DiskUsage organizationId={organizationId} />
+        <FullPageEmptyState
+          title="No projects found"
+          description={
+            isAdmin
+              ? 'Create your first project to get started with analytics.'
+              : 'You do not have access to any projects in this organization yet. Ask an admin to grant you access.'
+          }
+          icon={BoxSelectIcon}
+        >
+          {isAdmin && (
+            <Button icon={PlusIcon} onClick={() => pushModal('AddProject')}>
+              Create project
+            </Button>
+          )}
+        </FullPageEmptyState>
+      </div>
     );
   }
 
@@ -76,6 +80,8 @@ function OrganizationPage() {
         description="All your projects in this workspace"
         className="mb-8"
       />
+
+      <DiskUsage organizationId={organizationId} />
 
       <TableButtons>
         <AnimatedSearchInput
