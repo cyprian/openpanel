@@ -97,7 +97,6 @@ const MIN_GIF_FRAME_DELAY_MS = 100;
 const MAX_GIF_FRAME_DELAY_MS = 2000;
 const GIF_FRAME_DELAY_STEP_MS = 50;
 const MAX_GIF_DIMENSION = 768;
-const IMAGE_PREVIEW_SCALE = 2;
 const FILENAME_UNSAFE_CHARACTERS = /[^a-z0-9]+/g;
 const FILENAME_EDGE_DASHES = /^-+|-+$/g;
 const LOWER_IS_BETTER_ML_METRIC_PATTERNS = [
@@ -1231,26 +1230,11 @@ function EvaluationImageThumb({
 }
 
 function EvaluationImagePreview({ image }: { image: MlRunImage }) {
-  const [dimensions, setDimensions] = useState({
-    width: image.width,
-    height: image.height,
-  });
-
   return (
     <img
       alt={getImageLabel(image)}
-      className="block max-w-none"
-      onLoad={({ currentTarget }) => {
-        setDimensions({
-          width: currentTarget.naturalWidth,
-          height: currentTarget.naturalHeight,
-        });
-      }}
+      className="block h-32 w-40 max-w-none object-contain"
       src={image.dataUrl}
-      style={{
-        width: dimensions.width ? dimensions.width * IMAGE_PREVIEW_SCALE : undefined,
-        height: dimensions.height ? dimensions.height * IMAGE_PREVIEW_SCALE : undefined,
-      }}
     />
   );
 }
