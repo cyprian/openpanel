@@ -170,7 +170,7 @@ export const mlRouter = createTRPCRouter({
         runId: z.string(),
         evaluationRowId: z.string(),
         imageName: z.string().min(1),
-        limit: z.number().int().positive().max(500).default(200),
+        limit: z.number().int().positive().max(500).nullable().default(200),
       })
     )
     .query(({ input }) => listMlEvaluationImageTimeline(input)),

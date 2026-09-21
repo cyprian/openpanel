@@ -1435,7 +1435,7 @@ export async function listMlEvaluationImageTimeline(input: {
   runId: string;
   evaluationRowId: string;
   imageName: string;
-  limit?: number;
+  limit?: number | null;
 }) {
   const anchorRow = await db.mlEvaluationRow.findFirstOrThrow({
     where: {
@@ -1464,7 +1464,7 @@ export async function listMlEvaluationImageTimeline(input: {
         createdAt: 'asc',
       },
     ],
-    take: Math.min(input.limit ?? 200, 500),
+    take: input.limit === null ? undefined : Math.min(input.limit ?? 200, 500),
   });
   const imageIds = [...new Set(rows.flatMap((row) => row.imageIds))];
   const images = imageIds.length

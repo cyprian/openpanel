@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { Tooltiper } from '@/components/ui/tooltip';
 import {
   Table,
   TableBody,
@@ -96,6 +97,7 @@ const MIN_GIF_FRAME_DELAY_MS = 100;
 const MAX_GIF_FRAME_DELAY_MS = 2000;
 const GIF_FRAME_DELAY_STEP_MS = 50;
 const MAX_GIF_DIMENSION = 768;
+const IMAGE_PREVIEW_SCALE = 2;
 const FILENAME_UNSAFE_CHARACTERS = /[^a-z0-9]+/g;
 const FILENAME_EDGE_DASHES = /^-+|-+$/g;
 const LOWER_IS_BETTER_ML_METRIC_PATTERNS = [
@@ -1172,6 +1174,7 @@ function EvaluationImageThumb({
   projectId: string;
   runId: string;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
   const image = images[0];
   if (!image) {
     return <span className="text-muted-foreground text-xs">-</span>;
@@ -1180,34 +1183,41 @@ function EvaluationImageThumb({
   const imageLabel = getImageLabel(image);
 
   return (
-    <Dialog>
-      <DialogTrigger asChild disabled={!image.dataUrl}>
-        <button
-          aria-label={`View ${imageLabel}`}
-          className="relative h-16 w-20 overflow-hidden rounded-md border bg-def-100 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-          disabled={!image.dataUrl}
-          type="button"
-        >
-          {image.dataUrl ? (
-            <img
-              alt={imageLabel}
-              className="h-full w-full object-contain"
-              src={image.dataUrl}
-              title={imageLabel}
-            />
-          ) : (
-            <span className="center-center h-full text-muted-foreground text-xs">
-              Missing
-            </span>
-          )}
-          {images.length > 1 && (
-            <span className="absolute right-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 font-medium text-[10px] shadow">
-              +{images.length - 1}
-            </span>
-          )}
-        </button>
-      </DialogTrigger>
-      {image.dataUrl && (
+    <Dialog onOpenChange={setIsOpen} open={isOpen}>
+      <Tooltiper
+        asChild
+        content={<EvaluationImagePreview image={image} />}
+        disabled={!image.dataUrl}
+        side="right"
+        tooltipClassName="pointer-events-none p-0 overflow-hidden"
+      >
+        <DialogTrigger asChild disabled={!image.dataUrl}>
+          <button
+            aria-label={`View ${imageLabel}`}
+            className="relative h-16 w-20 overflow-hidden rounded-md border bg-def-100 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+            disabled={!image.dataUrl}
+            type="button"
+          >
+            {image.dataUrl ? (
+              <img
+                alt={imageLabel}
+                className="h-full w-full object-contain"
+                src={image.dataUrl}
+              />
+            ) : (
+              <span className="center-center h-full text-muted-foreground text-xs">
+                Missing
+              </span>
+            )}
+            {images.length > 1 && (
+              <span className="absolute right-1 bottom-1 rounded bg-background/90 px-1.5 py-0.5 font-medium text-[10px] shadow">
+                +{images.length - 1}
+              </span>
+            )}
+          </button>
+        </DialogTrigger>
+      </Tooltiper>
+      {image.dataUrl && isOpen && (
         <EvaluationImageDialog
           compareImages={compareImages}
           evaluationRowId={evaluationRowId}
@@ -1217,6 +1227,31 @@ function EvaluationImageThumb({
         />
       )}
     </Dialog>
+  );
+}
+
+function EvaluationImagePreview({ image }: { image: MlRunImage }) {
+  const [dimensions, setDimensions] = useState({
+    width: image.width,
+    height: image.height,
+  });
+
+  return (
+    <img
+      alt={getImageLabel(image)}
+      className="block max-w-none"
+      onLoad={({ currentTarget }) => {
+        setDimensions({
+          width: currentTarget.naturalWidth,
+          height: currentTarget.naturalHeight,
+        });
+      }}
+      src={image.dataUrl}
+      style={{
+        width: dimensions.width ? dimensions.width * IMAGE_PREVIEW_SCALE : undefined,
+        height: dimensions.height ? dimensions.height * IMAGE_PREVIEW_SCALE : undefined,
+      }}
+    />
   );
 }
 
@@ -1238,6 +1273,7 @@ function EvaluationImageDialog({
   const [compareImageId, setCompareImageId] = useState(NO_COMPARE_VALUE);
   const [comparePosition, setComparePosition] = useState(50);
   const [viewMode, setViewMode] = useState<'image' | 'gif'>('image');
+  const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
   const [gifDelayMs, setGifDelayMs] = useState(DEFAULT_GIF_FRAME_DELAY_MS);
   const [gifStatus, setGifStatus] = useState<
     'idle' | 'generating' | 'ready' | 'error'
@@ -1247,11 +1283,8 @@ function EvaluationImageDialog({
   const [gifFrameImages, setGifFrameImages] = useState<MlRunImage[]>([]);
   const gifObjectUrlRef = useRef<string | null>(null);
   const gifGenerationRef = useRef(0);
-  const imageLabel = getImageLabel(image);
   const compareImage = compareImages.find((item) => item.id === compareImageId);
   const isGifStale = !!gifResult && gifResult.delayMs !== gifDelayMs;
-  const dimensions =
-    image.width && image.height ? `${image.width} x ${image.height}` : null;
   const gifDescription = gifFrameImages.length > 1
     ? `${gifFrameImages.length} frames at ${gifDelayMs} ms per frame`
     : `Collecting ${image.name} frames across steps.`;
@@ -1262,6 +1295,32 @@ function EvaluationImageDialog({
     projectId,
     runId,
   });
+  const timelineQuery = useQuery(trpc.ml.evaluationImageTimeline.queryOptions({
+    evaluationRowId,
+    imageName: image.name,
+    limit: null,
+    projectId,
+    runId,
+  }));
+  const stepImages = useMemo(() => {
+    const imagesByStep = new Map<number | null, MlRunImage>();
+    for (const item of timelineQuery.data ?? []) {
+      if (item.dataUrl) {
+        const step = item.evaluationStep ?? item.step;
+        imagesByStep.set(step, { ...item, step });
+      }
+    }
+    return [...imagesByStep.values()].sort(
+      (a, b) => (a.step ?? -Infinity) - (b.step ?? -Infinity)
+    );
+  }, [timelineQuery.data]);
+  const latestStepIndex = Math.max(0, stepImages.length - 1);
+  const stepIndex = Math.min(selectedStepIndex ?? latestStepIndex, latestStepIndex);
+  const selectedImage = stepImages[stepIndex] ?? image;
+  const imageLabel = getImageLabel(selectedImage);
+  const dimensions = selectedImage.width && selectedImage.height
+    ? `${selectedImage.width} x ${selectedImage.height}`
+    : null;
 
   useEffect(() => {
     return () => {
@@ -1385,23 +1444,54 @@ function EvaluationImageDialog({
             result={gifResult}
             status={gifStatus}
           />
+        ) : timelineQuery.isPending ? (
+          <div className="center-center min-h-48 p-6 text-muted-foreground text-sm" role="status">
+            Loading image steps…
+          </div>
         ) : compareImage ? (
           <ImageComparisonSlider
             compareImage={compareImage}
-            image={image}
+            image={selectedImage}
             onPositionChange={setComparePosition}
             position={comparePosition}
           />
         ) : (
           <img
             alt={imageLabel}
-            className="block h-auto max-h-[calc(100vh-10rem)] max-w-full"
-            height={image.height ?? undefined}
-            src={image.dataUrl}
-            width={image.width ?? undefined}
+            className="block h-auto max-h-[calc(100vh-16rem)] max-w-full"
+            height={selectedImage.height ?? undefined}
+            src={selectedImage.dataUrl}
+            width={selectedImage.width ?? undefined}
           />
         )}
       </div>
+      {viewMode === 'image' && (
+        <div className="grid gap-2">
+          <label className="text-sm" htmlFor={`image-step-${image.id}`}>
+            Step {selectedImage.step ?? 'unknown'}
+          </label>
+          <input
+            aria-valuetext={`Step ${selectedImage.step ?? 'unknown'}`}
+            className="w-full accent-primary"
+            disabled={timelineQuery.isPending || stepImages.length < 2}
+            id={`image-step-${image.id}`}
+            max={Math.max(1, latestStepIndex)}
+            min={0}
+            onChange={(event) => setSelectedStepIndex(event.currentTarget.valueAsNumber)}
+            step={1}
+            type="range"
+            value={stepImages.length < 2 ? 1 : stepIndex}
+          />
+          {timelineQuery.isError && (
+            <div className="text-destructive text-xs" role="alert">
+              Could not load image steps.
+              <button className="ml-2 underline" onClick={() => timelineQuery.refetch()} type="button">
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {viewMode === 'gif' ? (
         <div className="grid gap-3 rounded-md border bg-background p-3">
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
@@ -2163,6 +2253,7 @@ async function generateEvaluationGif(
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, width, height);
     drawContainedImage(context, frame.image, width, height);
+    drawGifStepLabel(context, frame.step, width, height);
     const imageData = context.getImageData(0, 0, width, height);
     const palette = quantize(imageData.data, 256);
     const index = applyPalette(imageData.data, palette);
@@ -2192,6 +2283,7 @@ function loadGifFrame(image: MlRunImage) {
     image: HTMLImageElement;
     width: number;
     height: number;
+    step: number | null;
   }>((resolve, reject) => {
     const element = new Image();
     element.onload = () => {
@@ -2202,7 +2294,7 @@ function loadGifFrame(image: MlRunImage) {
         return;
       }
 
-      resolve({ height, image: element, width });
+      resolve({ height, image: element, step: image.step, width });
     };
     element.onerror = () => {
       reject(new Error(`Could not load ${getImageLabel(image)}.`));
@@ -2241,6 +2333,38 @@ function drawContainedImage(
   const drawY = Math.round((height - drawHeight) / 2);
 
   context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+}
+
+function drawGifStepLabel(
+  context: CanvasRenderingContext2D,
+  step: number | null,
+  width: number,
+  height: number
+) {
+  const label = step === null ? 'Step unknown' : `Step ${step}`;
+  const scale = Math.min(width / 512, height / 512, 1.5);
+  const fontSize = 16 * scale;
+  const padding = 6 * scale;
+  const margin = 8 * scale;
+
+  context.save();
+  context.font = `600 ${fontSize}px sans-serif`;
+  context.textAlign = 'right';
+  context.textBaseline = 'top';
+  const labelWidth = Math.min(
+    context.measureText(label).width,
+    width - 2 * (margin + padding)
+  );
+  context.fillStyle = '#111827';
+  context.fillRect(
+    width - margin - labelWidth - 2 * padding,
+    margin,
+    labelWidth + 2 * padding,
+    fontSize + 2 * padding
+  );
+  context.fillStyle = '#ffffff';
+  context.fillText(label, width - margin - padding, margin + padding, labelWidth);
+  context.restore();
 }
 
 function downloadUrl(url: string, filename: string) {
