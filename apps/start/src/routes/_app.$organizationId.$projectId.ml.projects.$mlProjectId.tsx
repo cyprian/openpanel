@@ -303,7 +303,12 @@ function MlProjectRunsIndex() {
             </Button>
             <LinkButton
               icon={GitCompareIcon}
-              search={{ mlProjectId }}
+              search={{
+                mlProjectId,
+                runIds: selectedRunCount > 0
+                  ? selectedRuns.map((run) => run.id)
+                  : undefined,
+              }}
               to="/$organizationId/$projectId/ml/compare"
               params={{ organizationId, projectId }}
               variant="outline"

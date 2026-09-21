@@ -63,6 +63,12 @@ export const Route = createFileRoute(
   }),
   validateSearch: z.object({
     mlProjectId: z.string().optional(),
+    runIds: z.array(z.string()).optional(),
+  }),
+  remountDeps: ({ params, search }) => ({
+    projectId: params.projectId,
+    mlProjectId: search.mlProjectId,
+    runIds: search.runIds,
   }),
 });
 
@@ -85,7 +91,7 @@ const DEFAULT_METRIC_STORAGE_PREFIX = 'openpanel.ml.compare.defaultMetric';
 
 function Component() {
   const { organizationId, projectId } = Route.useParams();
-  const { mlProjectId } = Route.useSearch();
+  const { mlProjectId, runIds } = Route.useSearch();
   const trpc = useTRPC();
   const runs = useQuery(trpc.ml.runs.queryOptions({ projectId, mlProjectId }));
   const metricNames = useQuery(
@@ -99,7 +105,9 @@ function Component() {
       metricCount: metricNames.data?.length ?? 0,
     },
   );
-  const [selectedRunIds, setSelectedRunIds] = useState<string[] | null>(null);
+  const [selectedRunIds, setSelectedRunIds] = useState<string[] | null>(
+    () => runIds ?? null
+  );
   const [metric, setMetric] = useState('');
   const [defaultMetric, setDefaultMetric] = useState('');
   const metricOptions = metricNames.data ?? [];
