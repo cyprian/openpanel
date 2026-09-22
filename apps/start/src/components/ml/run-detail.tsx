@@ -1187,7 +1187,8 @@ function EvaluationImageThumb({
         asChild
         content={<EvaluationImagePreview image={image} />}
         disabled={!image.dataUrl}
-        side="right"
+        side="top"
+        avoidCollisions={false}
         tooltipClassName="pointer-events-none p-0 overflow-hidden"
       >
         <DialogTrigger asChild disabled={!image.dataUrl}>
@@ -1233,7 +1234,7 @@ function EvaluationImagePreview({ image }: { image: MlRunImage }) {
   return (
     <img
       alt={getImageLabel(image)}
-      className="block h-32 w-40 max-w-none object-contain"
+      className="block h-[1024px] w-[1024px] max-w-none object-contain"
       src={image.dataUrl}
     />
   );

@@ -42,6 +42,7 @@ interface TooltiperProps {
   align?: 'start' | 'center' | 'end';
   delayDuration?: number;
   sideOffset?: number;
+  avoidCollisions?: boolean;
   disabled?: boolean;
 }
 export function Tooltiper({
@@ -54,6 +55,7 @@ export function Tooltiper({
   side,
   delayDuration = 0,
   sideOffset = 10,
+  avoidCollisions,
   disabled = false,
   align,
 }: TooltiperProps) {
@@ -70,6 +72,7 @@ export function Tooltiper({
       </TooltipTrigger>
       <TooltipPortal>
         <TooltipContent
+          avoidCollisions={avoidCollisions}
           sideOffset={sideOffset}
           side={side}
           className={tooltipClassName}
