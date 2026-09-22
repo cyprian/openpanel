@@ -1234,7 +1234,7 @@ function EvaluationImagePreview({ image }: { image: MlRunImage }) {
   return (
     <img
       alt={getImageLabel(image)}
-      className="block h-[1024px] w-[1024px] max-w-none object-contain"
+      className="block h-[768px] w-[768px] max-w-none object-contain"
       src={image.dataUrl}
     />
   );
