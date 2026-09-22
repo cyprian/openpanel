@@ -1,3 +1,4 @@
+import { MetricNotificationMenu } from '@/components/ml/metric-notification-menu';
 import { MlStatusBadge } from '@/components/ml/status-badge';
 import { SettingsInspector } from '@/components/ml/settings-inspector';
 import { MlRunActions } from '@/components/ml/run-actions';
@@ -507,6 +508,7 @@ export function MlRunDetail({
             onMetricChartClick={handleMetricChartClick}
             onToggleKeyMetric={toggleKeyMetric}
             showKeyToggle={false}
+            notificationContext={{ organizationId, projectId, runId, runName: run.data?.name ?? runId }}
           />
         </section>
       )}
@@ -753,6 +755,7 @@ function MetricsGrid({
   onMetricChartClick,
   onToggleKeyMetric,
   showKeyToggle = true,
+  notificationContext,
 }: {
   chartMetricNames: string[];
   emptyText?: string;
@@ -763,6 +766,7 @@ function MetricsGrid({
   onMetricChartClick: (metric: string) => void;
   onToggleKeyMetric: (metric: string) => void;
   showKeyToggle?: boolean;
+  notificationContext?: { organizationId: string; projectId: string; runId: string; runName: string };
 }) {
   const entries = Object.entries(metrics);
   const chartMetricNameSet = new Set(chartMetricNames);
@@ -792,6 +796,7 @@ function MetricsGrid({
             className="relative rounded-md border bg-background transition-colors hover:bg-accent"
             key={key}
           >
+            {notificationContext && <MetricNotificationMenu {...notificationContext} metric={key} />}
             {showKeyToggle && (
               <button
                 aria-label={
@@ -808,8 +813,9 @@ function MetricsGrid({
               </button>
             )}
             <button
-              className="block w-full p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default data-[with-key-toggle=true]:pr-9"
+              className="block w-full p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default data-[with-key-toggle=true]:pr-9 data-[with-notifications=true]:pr-16"
               data-with-key-toggle={showKeyToggle}
+              data-with-notifications={!!notificationContext}
               disabled={!hasChart}
               onClick={() => onMetricChartClick(key)}
               type="button"

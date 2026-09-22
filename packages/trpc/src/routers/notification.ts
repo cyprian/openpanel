@@ -77,9 +77,6 @@ export const notificationRouter = createTRPCRouter({
   createOrUpdateRule: protectedProcedure
     .input(zCreateNotificationRule)
     .mutation(async ({ input, ctx }) => {
-      // Clear the cache for the project
-      await getNotificationRulesByProjectId.clear(input.projectId);
-
       if (input.id) {
         const existing = await db.notificationRule.findUniqueOrThrow({
           where: {
@@ -98,7 +95,7 @@ export const notificationRouter = createTRPCRouter({
           );
         }
 
-        return db.notificationRule.update({
+        const updated = await db.notificationRule.update({
           where: {
             id: input.id,
           },
@@ -120,9 +117,14 @@ export const notificationRouter = createTRPCRouter({
             template: input.template || null,
           },
         });
+        await getNotificationRulesByProjectId.clear(existing.projectId);
+        if (input.projectId !== existing.projectId) {
+          await getNotificationRulesByProjectId.clear(input.projectId);
+        }
+        return updated;
       }
 
-      return db.notificationRule.create({
+      const created = await db.notificationRule.create({
         data: {
           name: input.name,
           projectId: input.projectId,
@@ -141,6 +143,8 @@ export const notificationRouter = createTRPCRouter({
           template: input.template || null,
         },
       });
+      await getNotificationRulesByProjectId.clear(input.projectId);
+      return created;
     }),
   deleteRule: protectedProcedure
     .input(z.object({ id: z.string() }))
@@ -160,10 +164,12 @@ export const notificationRouter = createTRPCRouter({
         throw new TRPCForbiddenError('You do not have access to this project');
       }
 
-      return db.notificationRule.delete({
+      const deleted = await db.notificationRule.delete({
         where: {
           id,
         },
       });
+      await getNotificationRulesByProjectId.clear(rule.projectId);
+      return deleted;
     }),
 });

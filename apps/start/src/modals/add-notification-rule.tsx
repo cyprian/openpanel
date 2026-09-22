@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { shortId } from '@openpanel/common';
 import { zCreateNotificationRule } from '@openpanel/validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { FilterIcon, PlusIcon, SaveIcon, TrashIcon } from 'lucide-react';
 import {
   Controller,
@@ -27,30 +28,32 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAppParams } from '@/hooks/use-app-params';
 import { useEventNames } from '@/hooks/use-event-names';
 import { useEventProperties } from '@/hooks/use-event-properties';
-import { useTRPC } from '@/integrations/trpc/react';
+import { handleErrorToastOptions, useTRPC } from '@/integrations/trpc/react';
 import type { RouterOutputs } from '@/trpc/client';
 
 interface Props {
   rule?: RouterOutputs['notification']['rules'][number];
+  defaults?: Partial<IForm>;
+  slackOnly?: boolean;
 }
 
 type IForm = z.infer<typeof zCreateNotificationRule>;
 
-export default function AddNotificationRule({ rule }: Props) {
+export default function AddNotificationRule({ rule, defaults, slackOnly = false }: Props) {
   const client = useQueryClient();
   const { organizationId, projectId } = useAppParams();
   const form = useForm<IForm>({
     resolver: zodResolver(zCreateNotificationRule),
     defaultValues: {
       id: rule?.id ?? '',
-      name: rule?.name ?? '',
+      name: rule?.name ?? defaults?.name ?? '',
       sendToApp: rule?.sendToApp ?? false,
       sendToEmail: rule?.sendToEmail ?? false,
       integrations:
-        rule?.integrations.map((integration) => integration.id) ?? [],
+        rule?.integrations.map((integration) => integration.id) ?? defaults?.integrations ?? [],
       projectId,
-      template: rule?.template ?? '',
-      config: rule?.config ?? {
+      template: rule?.template ?? defaults?.template ?? '',
+      config: rule?.config ?? defaults?.config ?? {
         type: 'events',
         events: [
           {
@@ -65,6 +68,7 @@ export default function AddNotificationRule({ rule }: Props) {
   const trpc = useTRPC();
   const mutation = useMutation(
     trpc.notification.createOrUpdateRule.mutationOptions({
+      onError: handleErrorToastOptions({}),
       onSuccess() {
         toast.success(
           rule ? 'Notification rule updated' : 'Notification rule created'
@@ -94,14 +98,28 @@ export default function AddNotificationRule({ rule }: Props) {
       toast.error('At least one event is required');
       return;
     }
+    if (slackOnly && data.integrations.length === 0) {
+      toast.error('Choose a Slack destination');
+      return;
+    }
     mutation.mutate(data);
   };
 
-  const integrations = integrationsQuery.data ?? [];
+  const integrations = (integrationsQuery.data ?? []).filter(
+    (integration) => !slackOnly || integration.config.type === 'slack'
+  );
+
+  const createTitle = slackOnly ? 'Notify in Slack' : 'Create rule';
 
   return (
     <SheetContent className="[&>button.absolute]:hidden">
-      <ModalHeader title={rule ? 'Edit rule' : 'Create rule'} />
+      <ModalHeader title={rule ? 'Edit rule' : createTitle} />
+      {slackOnly && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Get notified when this metric improves in this run. Choose a connected
+          Slack destination below; its channel is configured by the integration.
+        </p>
+      )}
       <form className="col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
         <InputWithLabel
           error={form.formState.errors.name?.message}
@@ -110,6 +128,7 @@ export default function AddNotificationRule({ rule }: Props) {
           {...form.register('name')}
         />
 
+        {!slackOnly && <>
         <WithLabel
           // @ts-expect-error
           error={form.formState.errors.config?.type.message}
@@ -168,6 +187,7 @@ export default function AddNotificationRule({ rule }: Props) {
           </div>
         </WithLabel>
 
+        </>}
         <WithLabel
           info={
             <div className="prose dark:prose-invert">
@@ -227,22 +247,35 @@ export default function AddNotificationRule({ rule }: Props) {
           control={form.control}
           name="integrations"
           render={({ field }) => (
-            <WithLabel label="Integrations">
+            <WithLabel label={slackOnly ? 'Slack destinations' : 'Integrations'}>
               <ComboboxAdvanced
                 {...field}
                 className="w-full"
                 items={integrations.map((integration) => ({
-                  label: integration.name,
+                  label: integration.config.type === 'slack'
+                    ? `${integration.name} (${integration.config.incoming_webhook.channel})`
+                    : integration.name,
                   value: integration.id,
                 }))}
-                placeholder="Pick integrations"
+                placeholder={slackOnly ? 'Choose Slack destinations' : 'Pick integrations'}
                 value={field.value ?? []}
               />
             </WithLabel>
           )}
         />
 
-        <Button icon={SaveIcon} type="submit">
+        {slackOnly && integrationsQuery.isError && (
+          <p role="alert">Could not load Slack destinations. <button type="button" className="underline" onClick={() => integrationsQuery.refetch()}>Retry</button></p>
+        )}
+        {slackOnly && integrationsQuery.isSuccess && integrations.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            No Slack destinations connected.{' '}
+            <Link to="/$organizationId/integrations/available" params={{ organizationId: organizationId! }} onClick={() => popModal()} className="underline">
+              Connect Slack
+            </Link>
+          </p>
+        )}
+        <Button icon={SaveIcon} type="submit" disabled={mutation.isPending || (slackOnly && (integrationsQuery.isPending || integrationsQuery.isError || integrations.length === 0))}>
           {rule ? 'Update' : 'Create'}
         </Button>
       </form>
