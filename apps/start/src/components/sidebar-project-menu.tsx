@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BellIcon,
+  WorkflowIcon,
   BookOpenIcon,
   Building2Icon,
   ChartLineIcon,
@@ -72,6 +73,12 @@ export default function SidebarProjectMenu({
           icon={BellIcon}
           label="Notifications"
         />
+        <SidebarLink
+          exact={false}
+          href={'/integrations'}
+          icon={WorkflowIcon}
+          label="Integrations"
+        />
         <SidebarLink href={'..'} icon={UndoDotIcon} label="Back to workspace" />
       </>
     );
@@ -117,6 +124,12 @@ export default function SidebarProjectMenu({
         href={'/notifications'}
         icon={BellIcon}
         label="Notifications"
+      />
+      <SidebarLink
+        exact={false}
+        href={'/integrations'}
+        icon={WorkflowIcon}
+        label="Integrations"
       />
       <SidebarLink href={'..'} icon={UndoDotIcon} label="Back to workspace" />
     </>

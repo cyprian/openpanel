@@ -8,11 +8,12 @@ import {
   getNotificationRulesByProjectId,
   isBaseIntegration,
 } from '@openpanel/db';
-import { zCreateNotificationRule } from '@openpanel/validation';
+import { isKind, zCreateNotificationRule } from '@openpanel/validation';
 
-import { getProjectAccess } from '../access';
-import { TRPCForbiddenError } from '../errors';
+import { requireProjectAccess } from '../access';
+import { TRPCBadRequestError, TRPCForbiddenError } from '../errors';
 import { createTRPCRouter, protectedProcedure } from '../trpc';
+import { redactIntegration } from './integration';
 
 export const notificationRouter = createTRPCRouter({
   list: protectedProcedure
@@ -68,7 +69,9 @@ export const notificationRouter = createTRPCRouter({
                       rule.sendToEmail)
                   );
                 }),
-                ...rule.integrations,
+                // The attached rows carry the credentials the worker delivers
+                // with; the dashboard only reads id, name and config.type.
+                ...rule.integrations.map(redactIntegration),
               ],
             };
           });
@@ -77,6 +80,59 @@ export const notificationRouter = createTRPCRouter({
   createOrUpdateRule: protectedProcedure
     .input(zCreateNotificationRule)
     .mutation(async ({ input, ctx }) => {
+      // Authorize the target project (covers both create and update; the create
+      // branch previously had no access check) and verify every connected
+      // integration belongs to this project or is a legacy org-wide one in the
+      // same org — never another project's.
+      const project = await db.project.findUniqueOrThrow({
+        where: { id: input.projectId },
+        select: { organizationId: true },
+      });
+      await requireProjectAccess({
+        userId: ctx.session.userId,
+        projectId: input.projectId,
+        level: 'write',
+      });
+
+      const integrationIds = input.integrations.filter(
+        (id) => !isBaseIntegration(id),
+      );
+      if (integrationIds.length > 0) {
+        const integrations = await db.integration.findMany({
+          where: { id: { in: integrationIds } },
+          select: {
+            id: true,
+            projectId: true,
+            organizationId: true,
+            config: true,
+          },
+        });
+        if (integrations.length !== integrationIds.length) {
+          throw new TRPCBadRequestError(
+            'One or more integrations were not found',
+          );
+        }
+        for (const integration of integrations) {
+          const sameProject = integration.projectId === input.projectId;
+          const orgWideSameOrg =
+            integration.projectId === null &&
+            integration.organizationId === project.organizationId;
+          if (!sameProject && !orgWideSameOrg) {
+            throw new TRPCForbiddenError(
+              'Integration does not belong to this project',
+            );
+          }
+          // Export-only integrations (s3_export, gcs_export) have no
+          // notification handler in the registry — attaching one to a rule
+          // would only surface later as a throw in the notification worker.
+          if (!isKind(integration.config, 'notification')) {
+            throw new TRPCBadRequestError(
+              'Integration cannot be used to deliver notifications',
+            );
+          }
+        }
+      }
+
       if (input.id) {
         const existing = await db.notificationRule.findUniqueOrThrow({
           where: {
@@ -84,16 +140,11 @@ export const notificationRouter = createTRPCRouter({
           },
         });
 
-        const access = await getProjectAccess({
+        await requireProjectAccess({
           userId: ctx.session.userId,
           projectId: existing.projectId,
+          level: 'write',
         });
-
-        if (!access) {
-          throw new TRPCForbiddenError(
-            'You do not have access to this project',
-          );
-        }
 
         const updated = await db.notificationRule.update({
           where: {
@@ -155,14 +206,11 @@ export const notificationRouter = createTRPCRouter({
         },
       });
 
-      const access = await getProjectAccess({
+      await requireProjectAccess({
         userId: ctx.session.userId,
         projectId: rule.projectId,
+        level: 'write',
       });
-
-      if (!access) {
-        throw new TRPCForbiddenError('You do not have access to this project');
-      }
 
       const deleted = await db.notificationRule.delete({
         where: {

@@ -15,6 +15,10 @@ vi.mock('@openpanel/redis', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@openpanel/redis')>();
   return {
     ...actual,
+    getRedisCache: () => Object.assign(actual.getRedisCache(), {
+      get: vi.fn().mockResolvedValue(null),
+      setex: vi.fn().mockResolvedValue('OK'),
+    }),
     getCache: async <T>(_key: string, _ttl: number, fn: () => Promise<T>) =>
       fn(),
   };

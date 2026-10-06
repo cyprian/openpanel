@@ -98,6 +98,41 @@ export async function bootCron() {
       type: 'cohortRefresh',
       pattern: '*/30 * * * *',
     },
+    {
+      name: 'sessionReaper',
+      type: 'sessionReaper',
+      pattern: 1000 * 60 * 5, // every 5 minutes
+    },
+    {
+      name: 'sessionVacuum',
+      type: 'sessionVacuum',
+      pattern: '0 4 * * *', // daily at 04:00 UTC — backstop for cleanup leaks
+    },
+    {
+      name: 'insightCleanup',
+      type: 'insightCleanup',
+      pattern: '30 4 * * *', // daily at 04:30 UTC — prune stale insights/events
+    },
+    {
+      name: 'weeklyDigest',
+      type: 'weeklyDigest',
+      pattern: '0 8 * * 1', // Mondays 08:00 UTC — weekly analytics digest email
+    },
+    {
+      name: 'dataHealth',
+      type: 'dataHealth',
+      pattern: '30 7 * * *', // Daily 07:30 UTC — no-data / data-stopped rescue emails
+    },
+    {
+      name: 'windDown',
+      type: 'windDown',
+      pattern: '0 * * * *', // Hourly — expired-trial wind-down emails, block, delete
+    },
+    {
+      name: 'flushExports',
+      type: 'flushExports',
+      pattern: 1000 * 60, // Every 1 minute — drains export buffers to S3/GCS
+    },
   ];
 
   if (process.env.SELF_HOSTED && process.env.NODE_ENV === 'production') {

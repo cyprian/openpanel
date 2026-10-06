@@ -27,9 +27,10 @@ import EditReference from './edit-reference';
 import EditReport from './edit-report';
 import EventDetails from './event-details';
 import Instructions from './Instructions';
+import InsightDetails from './insight-details';
+import MoveReport from './move-report';
 import OverviewChartDetails from './overview-chart-details';
 import OverviewFilters from './overview-filters';
-import TableFilters from './table-filters';
 import PageDetails from './page-details';
 import RegenerateRecoveryCodes from './regenerate-recovery-codes';
 import RequestPasswordReset from './request-reset-password';
@@ -39,6 +40,7 @@ import SetupTwoFactor from './setup-two-factor';
 import ShareDashboardModal from './share-dashboard-modal';
 import ShareOverviewModal from './share-overview-modal';
 import ShareReportModal from './share-report-modal';
+import TableFilters from './table-filters';
 import ViewChartUsers from './view-chart-users';
 import OverviewTopGenericModal from '@/components/overview/overview-top-generic-modal';
 import OverviewTopPagesModal from '@/components/overview/overview-top-pages-modal';
@@ -56,6 +58,7 @@ const modals = {
   EditEvent,
   EditMember,
   EventDetails,
+  InsightDetails,
   EditClient,
   AddProject,
   AddClient,
@@ -64,6 +67,7 @@ const modals = {
   ConfirmDeleteAccount,
   ConfirmDeleteOrganization,
   SaveReport,
+  MoveReport,
   AddDashboard,
   EditDashboard,
   EditReport,

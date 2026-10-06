@@ -2,15 +2,19 @@ import { FullPageEmptyState } from '@/components/full-page-empty-state';
 import FullPageLoadingState from '@/components/full-page-loading-state';
 import FeedbackPrompt from '@/components/organization/feedback-prompt';
 import SupporterPrompt from '@/components/organization/supporter-prompt';
+import YearlySwitchPrompt from '@/components/organization/yearly-switch-prompt';
 import { LinkButton } from '@/components/ui/button';
 import { useTRPC } from '@/integrations/trpc/react';
 import { cn } from '@/utils/cn';
+import { getSubscriptionStateMeta } from '@openpanel/payments/subscription-state-meta';
+import { subscriptionBlocksDashboard } from '@openpanel/payments/subscription-state';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import {
   Outlet,
   createFileRoute,
   notFound,
   useLocation,
+  useMatches,
 } from '@tanstack/react-router';
 import { format } from 'date-fns';
 import { Building2Icon } from 'lucide-react';
@@ -116,12 +120,37 @@ function Component() {
     }),
   );
 
+  const stateMeta = getSubscriptionStateMeta(organization.subscriptionState, {
+    endsAt: organization.subscriptionEndsAt,
+    canceledAt: organization.subscriptionCanceledAt,
+    resumesAt: organization.subscriptionResumesAt,
+  });
+
+  // Project routes show the full-screen BillingPrompt for blocking states;
+  // don't stack the (sometimes contradicting) banner on top. Org-level pages
+  // have no prompt, so the banner still shows there.
+  const isProjectRoute = useMatches({
+    select: (matches) =>
+      matches.some(
+        (match) => match.routeId === '/_app/$organizationId/$projectId',
+      ),
+  });
+  const hideBannerForPrompt =
+    isProjectRoute &&
+    subscriptionBlocksDashboard(organization.subscriptionState);
+
+  const location = useLocation();
+  const isBillingPage = /\/.+\/billing/.test(location.pathname);
+
   return (
     <>
-      {organization.subscriptionEndsAt && organization.isTrial && (
+      {!stateMeta.banner && !isBillingPage && (
+        <YearlySwitchPrompt organization={organization} />
+      )}
+      {stateMeta.banner && !hideBannerForPrompt && (
         <Alert
-          title="Free trial"
-          description={`Your organization is on a free trial. It ends on ${format(organization.subscriptionEndsAt, 'PPP')}`}
+          title={stateMeta.banner.title}
+          description={stateMeta.banner.description}
         >
           <LinkButton
             to="/$organizationId/billing"
@@ -129,45 +158,35 @@ function Component() {
               organizationId: organizationId,
             }}
           >
-            Upgrade from $2.5/month
+            {stateMeta.banner.cta}
           </LinkButton>
         </Alert>
       )}
-      {organization.subscriptionEndsAt && organization.isWillBeCanceled && (
-        <Alert
-          title="Subscription will be canceled"
-          description={`You have canceled your subscription. You can reactivate it by choosing a new plan below. It'll expire on ${format(organization.subscriptionEndsAt, 'PPP')}`}
-        >
-          <LinkButton
-            to="/$organizationId/billing"
-            params={{
-              organizationId: organizationId,
-            }}
+      {organization.isActive &&
+        !organization.isExceeded &&
+        organization.subscriptionPeriodEventsLimit > 0 &&
+        organization.subscriptionPeriodEventsCount >=
+          organization.subscriptionPeriodEventsLimit * 0.8 && (
+          <Alert
+            title="Approaching your events limit"
+            description={`You've used ${Math.round((organization.subscriptionPeriodEventsCount / organization.subscriptionPeriodEventsLimit) * 100)}% of your ${organization.subscriptionPeriodEventsLimit.toLocaleString()} monthly events. If you go over, we keep collecting your events but charts pause until you upgrade.`}
           >
-            Reactivate
-          </LinkButton>
-        </Alert>
-      )}
-      {organization.subscriptionCanceledAt && organization.isCanceled && (
-        <Alert
-          title="Subscription canceled"
-          description={`Your subscription was canceled on ${format(organization.subscriptionCanceledAt, 'PPP')}`}
-        >
-          <LinkButton
-            to="/$organizationId/billing"
-            params={{
-              organizationId: organizationId,
-            }}
-          >
-            Reactivate
-          </LinkButton>
-        </Alert>
-      )}
+            <LinkButton
+              to="/$organizationId/billing"
+              params={{
+                organizationId: organizationId,
+              }}
+            >
+              See plans
+            </LinkButton>
+          </Alert>
+        )}
       {organization.subscriptionPeriodEventsCountExceededAt &&
-        organization.isActive && (
+        organization.isActive &&
+        organization.isExceeded && (
           <Alert
             title="Events limit exceeded"
-            description={`Your subscription has exceeded the limit on ${format(organization.subscriptionPeriodEventsCountExceededAt, 'PPP')}`}
+            description={`You hit your monthly events limit on ${format(organization.subscriptionPeriodEventsCountExceededAt, 'PPP')}. We're still collecting your events — nothing is lost — but charts won't show new data until you upgrade or your next cycle starts.`}
           >
             <LinkButton
               to="/$organizationId/billing"

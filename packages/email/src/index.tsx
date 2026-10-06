@@ -8,21 +8,21 @@ import { db } from '@openpanel/db';
 import { type TemplateKey, type Templates, templates } from './emails';
 import { getUnsubscribeUrl } from './unsubscribe';
 
+/** a***@example.com, enough to correlate a log line without exposing the address. */
+function redactEmail(email: string): string {
+  const at = email.indexOf('@');
+  if (at <= 0) {
+    return '***';
+  }
+  return `${email[0]}***${email.slice(at)}`;
+}
+
 export * from './unsubscribe';
 
 const FROM = process.env.EMAIL_SENDER ?? 'hello@openpanel.dev';
 
 export type EmailData<T extends TemplateKey> = z.infer<Templates[T]['schema']>;
 export type EmailTemplate = keyof Templates;
-
-function maskEmail(email: string) {
-  const [name, domain] = email.split('@');
-  if (!name || !domain) {
-    return '[invalid-email]';
-  }
-
-  return `${name.slice(0, 3)}***@${domain}`;
-}
 
 function createSmtpTransport() {
   return createTransport({
@@ -96,12 +96,11 @@ export async function sendEmail<T extends TemplateKey>(
         html,
         headers,
       });
-      console.log('Sent email via SMTP', {
+      console.info('Sent email via SMTP', {
         template: templateKey,
-        to: maskEmail(to),
-        accepted: res.accepted,
-        rejected: res.rejected,
-        response: res.response,
+        to: redactEmail(to),
+        acceptedCount: res.accepted.length,
+        rejectedCount: res.rejected.length,
         messageId: res.messageId,
       });
       return res;
@@ -112,11 +111,12 @@ export async function sendEmail<T extends TemplateKey>(
   }
 
   if (!process.env.RESEND_API_KEY) {
-    console.log('No SMTP_HOST or RESEND_API_KEY found, here is the data');
-    console.log('Template:', template);
-    console.log('Subject: ', subject);
-    console.log('To:      ', to);
-    console.log('Data:    ', JSON.stringify(data, null, 2));
+    // Never dump the payload: template data carries password-reset and
+    // unsubscribe links, and the recipient is personal data
+    // (GHSA-xr2x-w49w-hp2c).
+    console.warn(
+      `Email not sent (email_provider_not_configured): template=${templateKey} to=${redactEmail(to)}`,
+    );
     return null;
   }
 
@@ -133,9 +133,9 @@ export async function sendEmail<T extends TemplateKey>(
     if (res.error) {
       throw new Error(res.error.message);
     }
-    console.log('Sent email via Resend', {
+    console.info('Sent email via Resend', {
       template: templateKey,
-      to: maskEmail(to),
+      to: redactEmail(to),
       id: res.data?.id,
     });
     return res;

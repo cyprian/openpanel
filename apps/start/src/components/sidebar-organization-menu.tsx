@@ -1,4 +1,4 @@
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronDownIcon,
@@ -7,7 +7,6 @@ import {
   LayoutListIcon,
   PlusIcon,
   UsersIcon,
-  WorkflowIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from './ui/badge';
@@ -18,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { useAppContext } from '@/hooks/use-app-context';
+import { getSubscriptionStateMeta } from '@openpanel/payments/subscription-state-meta';
 import { useOrganizationAccess } from '@/hooks/use-organization-access';
 import { pushModal } from '@/modals';
 import type { RouterOutputs } from '@/trpc/client';
@@ -68,10 +68,21 @@ export default function SidebarOrganizationMenu({
         >
           <CreditCardIcon size={20} />
           <div className="flex-1">Billing</div>
-          {organization?.isTrial && <Badge>Trial</Badge>}
-          {organization?.isExpired && <Badge>Expired</Badge>}
-          {organization?.isWillBeCanceled && <Badge>Canceled</Badge>}
-          {organization?.isCanceled && <Badge>Canceled</Badge>}
+          {(() => {
+            if (!organization) {
+              return null;
+            }
+            const badge = getSubscriptionStateMeta(
+              organization.subscriptionState,
+              {
+                endsAt: organization.subscriptionEndsAt,
+                canceledAt: organization.subscriptionCanceledAt,
+              }
+            ).badge;
+            return badge ? (
+              <Badge variant={badge.variant}>{badge.label}</Badge>
+            ) : null;
+          })()}
         </Link>
       )}
       {isAdmin && (
@@ -86,22 +97,11 @@ export default function SidebarOrganizationMenu({
           <div className="flex-1">Members</div>
         </Link>
       )}
-      <Link
-        className={cn(
-          'flex items-center gap-2 rounded-md px-3 py-2 font-medium text-[13px] transition-all hover:bg-def-200'
-        )}
-        from="/$organizationId"
-        to="/$organizationId/integrations"
-      >
-        <WorkflowIcon size={20} />
-        <div className="flex-1">Integrations</div>
-      </Link>
     </>
   );
 }
 
 export function ActionCTAButton() {
-  const navigate = useNavigate();
   const { organizationId } = useParams({ strict: false });
   const { isAdmin } = useOrganizationAccess(organizationId);
 
@@ -120,26 +120,28 @@ export function ActionCTAButton() {
           },
         ]
       : []),
-    {
-      label: 'Add integration',
-      icon: WorkflowIcon,
-      onClick: () =>
-        navigate({
-          to: '/$organizationId/integrations',
-          from: '/$organizationId',
-        }),
-    },
   ];
 
   const [currentActionIndex, setCurrentActionIndex] = useState(0);
+  const actionCount = ACTIONS.length;
 
   useEffect(() => {
+    if (actionCount === 0) {
+      return;
+    }
     const interval = setInterval(() => {
-      setCurrentActionIndex((prevIndex) => (prevIndex + 1) % ACTIONS.length);
+      setCurrentActionIndex((prevIndex) => (prevIndex + 1) % actionCount);
     }, 2000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [actionCount]);
+
+  // Members (non-admins) have no org-level actions; render nothing instead of
+  // indexing into an empty list.
+  const currentAction = ACTIONS[currentActionIndex];
+  if (!currentAction) {
+    return null;
+  }
 
   return (
     <div className="mb-4">
@@ -170,7 +172,7 @@ export function ActionCTAButton() {
                     duration: 0.3,
                   }}
                 >
-                  {ACTIONS[currentActionIndex].label}
+                  {currentAction.label}
                 </motion.span>
               </AnimatePresence>
             </div>

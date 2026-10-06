@@ -17,10 +17,12 @@ import { popModal } from '.';
 import { ModalContent, ModalHeader } from './Modal/Container';
 import AnimateHeight from '@/components/animate-height';
 import { ButtonContainer } from '@/components/button-container';
+import { CreateClientSuccess } from '@/components/clients/create-client-success';
 import { InputWithLabel, WithLabel } from '@/components/forms/input-with-label';
 import TagInput from '@/components/forms/tag-input';
 import { Button } from '@/components/ui/button';
 import { useAppParams } from '@/hooks/use-app-params';
+import { ONBOARDING_SECRET_KEY } from '@/hooks/use-client-secret';
 import { handleError, useTRPC } from '@/integrations/trpc/react';
 import { cn } from '@/utils/cn';
 
@@ -66,16 +68,13 @@ export default function AddProject() {
         queryClient.invalidateQueries(
           trpc.project.list.queryFilter({ organizationId })
         );
-        popModal();
-        navigate({
-          to: res.types.includes('ml')
-            ? '/$organizationId/$projectId/ml'
-            : '/$organizationId/$projectId',
-          params: {
-            organizationId,
-            projectId: res.id,
-          },
-        });
+        if (res.types.includes('ml')) {
+          popModal();
+          navigate({
+            to: '/$organizationId/$projectId/ml',
+            params: { organizationId, projectId: res.id },
+          });
+        }
         toast.success('Project created', {
           description: `${res.name}`,
           action: res.client
@@ -161,6 +160,35 @@ export default function AddProject() {
 
   return (
     <ModalContent>
+      {mutation.isSuccess && !mutation.data.types.includes('ml') ? (
+        <>
+          <ModalHeader text="Your project is created" title="Success" />
+          {mutation.data.client && (
+            <CreateClientSuccess {...mutation.data.client} />
+          )}
+          <ButtonContainer className="justify-end">
+            <Button onClick={() => popModal()} variant="outline">Close</Button>
+            <Button asChild className="flex-1">
+              <a
+                href={`/onboarding/${mutation.data.id}/connect`}
+                onClick={() => {
+                  const secret = mutation.data.client?.secret;
+                  if (secret) {
+                    try {
+                      sessionStorage.setItem(ONBOARDING_SECRET_KEY, secret);
+                    } catch {
+                      // Connect shows the secret-already-shown notice if storage is unavailable.
+                    }
+                  }
+                }}
+              >
+                Set up tracking
+              </a>
+            </Button>
+          </ButtonContainer>
+        </>
+      ) : (
+        <>
       <ModalHeader title="Create project" />
       <form className="col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
         <InputWithLabel
@@ -277,6 +305,8 @@ export default function AddProject() {
           </Button>
         </ButtonContainer>
       </form>
+        </>
+      )}
     </ModalContent>
   );
 }

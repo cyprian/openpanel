@@ -1,7 +1,12 @@
 /** biome-ignore-all lint/style/useDefaultSwitchClause: switch cases are exhaustive by design */
-import { getCohortIds, type IChartEventFilter } from '@openpanel/validation';
+import {
+  getCohortIds,
+  type IChartEventFilter,
+  type IChartFilterValueType,
+} from '@openpanel/validation';
 import sqlstring from 'sqlstring';
 import { formatClickhouseDate, TABLE_NAMES } from '../clickhouse/client';
+import { buildTypedClause, hasTypedCast, isTypedOperator } from './filter-cast';
 
 export type FilterTableContext = {
   /** Outer query's primary table. */
@@ -51,7 +56,7 @@ function compileScalarClause(
   column: string,
   operator: IChartEventFilter['operator'],
   value: IChartEventFilter['value'],
-  options: { numeric?: boolean } = {},
+  options: { numeric?: boolean; type?: IChartFilterValueType } = {},
 ): string | null {
   if (
     value.length === 0 &&
@@ -59,6 +64,12 @@ function compileScalarClause(
     operator !== 'isNotNull'
   ) {
     return null;
+  }
+
+  // Explicit cast type wins over the column-name `numeric` auto-detect. Casts
+  // both the column and each value consistently (see filter-cast.ts).
+  if (hasTypedCast(options.type) && isTypedOperator(operator)) {
+    return buildTypedClause(column, operator, value, options.type!);
   }
 
   const numeric = options.numeric === true;
@@ -153,17 +164,63 @@ function compileScalarClause(
 }
 
 /**
+ * Profiles columns a `profile.<field>` filter may resolve to. Anything else is
+ * not a column name and must not reach the SQL text. Kept in sync with
+ * `getProfilePropertySelect` in chart.service.ts, which lists the same set for
+ * the SELECT side.
+ */
+export const PROFILE_TABLE_COLUMNS = new Set([
+  'id',
+  'first_name',
+  'last_name',
+  'email',
+  'avatar',
+  'created_at',
+  'last_seen_at',
+]);
+
+/** Whether `name` (with or without the `profile.` prefix) is a real profiles column. */
+export function isProfileColumn(name: string): boolean {
+  return PROFILE_TABLE_COLUMNS.has(name.replace(/^profile\./, ''));
+}
+
+/**
+ * The columns a profiles JOIN subquery must SELECT so that the given
+ * `profile.*` filter/breakdown names resolve. `profile.properties.<key>`
+ * needs the `properties` Map; a bare field needs that column. Column names
+ * are identifiers and cannot be escaped, so anything not on the allowlist is
+ * dropped here instead of reaching the SQL text (GHSA-pc3q-gw7f-p2x2).
+ * Always includes `id`, which the JOIN condition uses.
+ */
+export function profileJoinColumns(names: string[]): string[] {
+  const columns = new Set<string>(['id']);
+  for (const name of names) {
+    const withoutPrefix = name.replace(/^profile\./, '');
+    if (withoutPrefix.startsWith('properties.') || withoutPrefix === 'properties') {
+      columns.add('properties');
+    } else if (PROFILE_TABLE_COLUMNS.has(withoutPrefix)) {
+      columns.add(withoutPrefix);
+    }
+  }
+  return [...columns];
+}
+
+/**
  * Translate `profile.<field>` into the SQL accessor used when querying the
  * profiles table directly. Bare fields (email, first_name, …) map to columns;
  * `profile.properties.<key>` maps to the JSON `properties[key]` lookup.
+ * Returns null for a field that is neither, so the caller can drop the filter.
  */
-function profileColumnSql(name: string): string {
+function profileColumnSql(name: string): string | null {
   const withoutPrefix = name.replace(/^profile\./, '');
   if (withoutPrefix.startsWith('properties.')) {
     const key = withoutPrefix.replace(/^properties\./, '');
     return `properties[${sqlstring.escape(key)}]`;
   }
-  return withoutPrefix;
+  if (PROFILE_TABLE_COLUMNS.has(withoutPrefix)) {
+    return withoutPrefix;
+  }
+  return null;
 }
 
 /**
@@ -218,7 +275,9 @@ function buildGroupClause(
 ): string | null {
   if (!ctx.groupsExpr) return null;
   const column = groupColumnSql(filter.name);
-  const inner = compileScalarClause(column, filter.operator, filter.value);
+  const inner = compileScalarClause(column, filter.operator, filter.value, {
+    type: filter.type,
+  });
   if (!inner) return null;
   const projectClause = `project_id = ${sqlstring.escape(projectId)}`;
   return `arrayExists(g -> g IN (SELECT id FROM ${TABLE_NAMES.groups} FINAL WHERE ${projectClause} AND ${inner}), ${ctx.groupsExpr})`;
@@ -230,9 +289,11 @@ function buildProfileClause(
   ctx: FilterTableContext,
 ): string | null {
   const column = profileColumnSql(filter.name);
+  if (!column) return null;
   const numeric = column === 'created_at' || column === 'last_seen_at';
   const inner = compileScalarClause(column, filter.operator, filter.value, {
     numeric,
+    type: filter.type,
   });
   if (!inner) return null;
   if (ctx.selfTable === 'profiles') {
@@ -279,6 +340,7 @@ function buildSessionClause(
   if (!column) return null;
   return compileScalarClause(column, filter.operator, filter.value, {
     numeric: SESSION_NUMERIC_COLUMNS.has(column),
+    type: filter.type,
   });
 }
 
@@ -297,34 +359,35 @@ export function buildFilterWhere(
   const where: Record<string, string> = {};
   filters.forEach((filter, index) => {
     const id = `f${index}`;
+    // Callers concatenate these fragments with AND and no grouping, so each
+    // fragment is parenthesized here to keep a top-level OR inside it from
+    // rebinding the surrounding conditions.
+    const set = (clause: string | null) => {
+      if (clause) where[id] = `(${clause})`;
+    };
 
     if (filter.operator === 'inCohort' || filter.operator === 'notInCohort') {
-      const clause = buildCohortClause(filter, projectId, ctx);
-      if (clause) where[id] = clause;
+      set(buildCohortClause(filter, projectId, ctx));
       return;
     }
 
     if (filter.name.startsWith('cohort:')) {
-      const clause = buildCohortClause(filter, projectId, ctx);
-      if (clause) where[id] = clause;
+      set(buildCohortClause(filter, projectId, ctx));
       return;
     }
 
     if (filter.name.startsWith('group.')) {
-      const clause = buildGroupClause(filter, projectId, ctx);
-      if (clause) where[id] = clause;
+      set(buildGroupClause(filter, projectId, ctx));
       return;
     }
 
     if (filter.name.startsWith('profile.')) {
-      const clause = buildProfileClause(filter, projectId, ctx);
-      if (clause) where[id] = clause;
+      set(buildProfileClause(filter, projectId, ctx));
       return;
     }
 
     if (filter.name.startsWith('session.')) {
-      const clause = buildSessionClause(filter, projectId, ctx);
-      if (clause) where[id] = clause;
+      set(buildSessionClause(filter, projectId, ctx));
       return;
     }
 

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { shortId } from '@openpanel/common';
-import { zCreateNotificationRule } from '@openpanel/validation';
+import { isKind, zCreateNotificationRule } from '@openpanel/validation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { FilterIcon, PlusIcon, SaveIcon, TrashIcon } from 'lucide-react';
@@ -84,7 +84,7 @@ export default function AddNotificationRule({ rule, defaults, slackOnly = false 
   );
   const integrationsQuery = useQuery(
     trpc.integration.list.queryOptions({
-      organizationId: organizationId!,
+      projectId: projectId!,
     })
   );
 
@@ -106,7 +106,9 @@ export default function AddNotificationRule({ rule, defaults, slackOnly = false 
   };
 
   const integrations = (integrationsQuery.data ?? []).filter(
-    (integration) => !slackOnly || integration.config.type === 'slack'
+    (integration) =>
+      isKind(integration.config, 'notification') &&
+      (!slackOnly || integration.config.type === 'slack')
   );
 
   const createTitle = slackOnly ? 'Notify in Slack' : 'Create rule';
@@ -270,7 +272,7 @@ export default function AddNotificationRule({ rule, defaults, slackOnly = false 
         {slackOnly && integrationsQuery.isSuccess && integrations.length === 0 && (
           <p className="text-sm text-muted-foreground">
             No Slack destinations connected.{' '}
-            <Link to="/$organizationId/integrations/available" params={{ organizationId: organizationId! }} onClick={() => popModal()} className="underline">
+            <Link to="/$organizationId/$projectId/integrations/available" params={{ organizationId: organizationId!, projectId: projectId! }} onClick={() => popModal()} className="underline">
               Connect Slack
             </Link>
           </p>

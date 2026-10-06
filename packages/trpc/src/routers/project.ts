@@ -15,7 +15,11 @@ import {
 import { zOnboardingProject, zProjectUpdate } from '@openpanel/validation';
 import { addHours } from 'date-fns';
 import { z } from 'zod';
-import { getProjectAccess } from '../access';
+import {
+  getProjectAccess,
+  requireProjectAccess,
+  requireProjectAdmin,
+} from '../access';
 import { TRPCForbiddenError, TRPCBadRequestError } from '../errors';
 import { createTRPCRouter, protectedProcedure } from '../trpc';
 
@@ -39,6 +43,52 @@ export const projectRouter = createTRPCRouter({
       return getProjectWithClients(projectId);
     }),
 
+  // Powers the activation checklist on the project overview: has the project
+  // received data, built a report, and invited a teammate yet?
+  activationStatus: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+      })
+    )
+    .query(async ({ input: { projectId }, ctx }) => {
+      const access = await getProjectAccess({
+        userId: ctx.session.userId,
+        projectId,
+      });
+
+      if (!access) {
+        throw new TRPCForbiddenError('You do not have access to this project');
+      }
+
+      const project = await db.project.findUniqueOrThrow({
+        where: { id: projectId },
+        select: {
+          firstEventAt: true,
+          eventsCount: true,
+          organizationId: true,
+          createdAt: true,
+        },
+      });
+
+      const [reportCount, memberCount] = await Promise.all([
+        db.report.count({ where: { projectId } }),
+        db.member.count({
+          where: { organizationId: project.organizationId },
+        }),
+      ]);
+
+      return {
+        // firstEventAt only exists for projects created after the column was
+        // added; the lifetime counter covers everything older.
+        hasFirstEvent: !!project.firstEventAt || project.eventsCount > 0,
+        firstEventAt: project.firstEventAt,
+        projectCreatedAt: project.createdAt,
+        hasReport: reportCount > 0,
+        hasTeammate: memberCount > 1,
+      };
+    }),
+
   list: protectedProcedure
     .input(
       z.object({
@@ -58,14 +108,11 @@ export const projectRouter = createTRPCRouter({
   update: protectedProcedure
     .input(zProjectUpdate)
     .mutation(async ({ input, ctx }) => {
-      const access = await getProjectAccess({
+      await requireProjectAccess({
         userId: ctx.session.userId,
         projectId: input.id,
+        level: 'write',
       });
-
-      if (!access) {
-        throw new TRPCForbiddenError('You do not have access to this project');
-      }
 
       const res = await db.project.update({
         where: {
@@ -175,14 +222,12 @@ export const projectRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const access = await getProjectAccess({
+      // Destroying a project is admin-tier, matching project.create.
+      await requireProjectAdmin({
         userId: ctx.session.userId,
         projectId: input.projectId,
+        message: 'Only organization admins can delete projects',
       });
-
-      if (!access) {
-        throw new TRPCForbiddenError('You do not have access to this project');
-      }
 
       await db.project.update({
         where: {
@@ -202,14 +247,11 @@ export const projectRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const access = await getProjectAccess({
+      await requireProjectAdmin({
         userId: ctx.session.userId,
         projectId: input.projectId,
+        message: 'Only organization admins can cancel a project deletion',
       });
-
-      if (!access) {
-        throw new TRPCForbiddenError('You do not have access to this project');
-      }
 
       const project = await db.project.findUnique({
         where: {

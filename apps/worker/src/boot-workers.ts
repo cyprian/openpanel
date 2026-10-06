@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { rawStderrWrite } from '@openpanel/logger';
 import {
   cohortComputeQueue,
   cronQueue,
@@ -9,7 +10,7 @@ import {
   gscQueue,
   importQueue,
   insightsQueue,
-  miscQueue,
+  isKafkaConfigured,
   notificationQueue,
   queueLogger,
   sessionsQueue,
@@ -28,7 +29,6 @@ import {
 import { gscJob } from './jobs/gsc';
 import { importJob } from './jobs/import';
 import { insightsProjectJob } from './jobs/insights';
-import { miscJob } from './jobs/misc';
 import { notificationJob } from './jobs/notification';
 import { sessionsJob } from './jobs/sessions';
 import { eventsGroupJobDuration } from './metrics';
@@ -43,7 +43,7 @@ const workerOptions: WorkerOptions = {
   connection: getRedisQueue(),
 };
 
-type QueueName = string; // Can be: events, events_N (where N is 0 to shards-1), sessions, cron, notification, misc
+type QueueName = string; // Can be: events, events_N (where N is 0 to shards-1), sessions, cron, notification
 
 /**
  * Parses the ENABLED_QUEUES environment variable and returns an array of queue names to start.
@@ -52,7 +52,7 @@ type QueueName = string; // Can be: events, events_N (where N is 0 to shards-1),
  * Supported queue names:
  * - events - All event shards (events_0, events_1, ..., events_N)
  * - events_N - Individual event shard (where N is 0 to EVENTS_GROUP_QUEUES_SHARDS-1)
- * - sessions, cron, notification, misc
+ * - sessions, cron, notification
  */
 function getEnabledQueues(): QueueName[] {
   const enabledQueuesEnv = process.env.ENABLED_QUEUES?.trim();
@@ -68,7 +68,6 @@ function getEnabledQueues(): QueueName[] {
       'sessions',
       'cron',
       'notification',
-      'misc',
       'import',
       'insights',
       'gsc',
@@ -112,10 +111,15 @@ export function bootWorkers() {
   const workers: (Worker | GroupWorker<any>)[] = [];
   const extraStops: Array<() => Promise<unknown>> = [];
 
-  // Start event workers based on enabled queues
+  // Start event workers based on enabled queues.
+  // When Kafka is configured the producer routes every event to Kafka, so the
+  // GroupMQ event shards would only poll an empty queue — skip them entirely
+  // and let the Kafka consumer handle ingestion.
   const eventQueuesToStart: number[] = [];
 
-  if (enabledQueues.includes('events')) {
+  if (isKafkaConfigured()) {
+    logger.info('Kafka is configured, skipping GroupMQ event workers');
+  } else if (enabledQueues.includes('events')) {
     // Start all event shards
     for (let i = 0; i < EVENTS_GROUP_QUEUES_SHARDS; i++) {
       eventQueuesToStart.push(i);
@@ -164,13 +168,24 @@ export function bootWorkers() {
     worker.on('completed', markEventsActivity);
     worker.on('drained', markEventsActivity);
 
-    worker.run();
+    // Fail loud on startup — silent stuck shard otherwise.
+    // Runtime errors are handled by the shared workers.forEach listener below.
+    worker.run().catch((err) => {
+      logger.error(
+        { shard: index, queueName, err },
+        'Worker startup failed — exiting',
+      );
+      // setTimeout+unref to let the logger flush before exit (matches the
+      // pattern used by uncaughtException/unhandledRejection handlers below).
+      setTimeout(() => process.exit(1), 1000).unref();
+    });
     workers.push(worker);
     logger.info({ concurrency }, `Started worker for ${queueName}`);
   }
 
-  // Start Kafka events consumer (parallel to groupmq events for allow-listed project IDs)
-  if (enabledQueues.includes('events_kafka') && process.env.KAFKA_BROKERS) {
+  // Start Kafka events consumer. When Kafka is configured this fully replaces
+  // the GroupMQ event workers (which are skipped above).
+  if (enabledQueues.includes('events_kafka') && isKafkaConfigured()) {
     enableEventsHeartbeat();
     let handle: KafkaConsumerHandle | null = null;
     const startPromise = startKafkaEventsConsumer()
@@ -221,17 +236,6 @@ export function bootWorkers() {
     );
     workers.push(notificationWorker);
     logger.info({ concurrency }, 'Started worker for notification');
-  }
-
-  // Start misc worker
-  if (enabledQueues.includes('misc')) {
-    const concurrency = getConcurrencyFor('misc');
-    const miscWorker = new Worker(miscQueue.name, miscJob, {
-      ...workerOptions,
-      concurrency,
-    });
-    workers.push(miscWorker);
-    logger.info({ concurrency }, 'Started worker for misc');
   }
 
   // Start import worker
@@ -400,13 +404,22 @@ export function bootWorkers() {
 
   // uncaughtException / unhandledRejection: process state is corrupt.
   // Don't try to drain — log and exit fast so Docker respawns us.
+  // Mirror fatals to the real stderr (bypassing the output interceptor, so
+  // nothing ships twice) — the OTLP flush window can be lost on the way
+  // down, and `docker logs` must always show why we died.
   process.on('uncaughtException', (error) => {
     logger.fatal({ err: error }, 'Uncaught exception — exiting');
+    rawStderrWrite(`Uncaught exception — exiting: ${error?.stack ?? error}\n`);
     setShuttingDown(true);
     setTimeout(() => process.exit(1), 1000).unref();
   });
   process.on('unhandledRejection', (reason, promise) => {
     logger.fatal({ reason, promise }, 'Unhandled rejection — exiting');
+    rawStderrWrite(
+      `Unhandled rejection — exiting: ${
+        reason instanceof Error ? reason.stack : String(reason)
+      }\n`,
+    );
     setShuttingDown(true);
     setTimeout(() => process.exit(1), 1000).unref();
   });

@@ -7,6 +7,7 @@ import {
 } from '@/hooks/use-page-context-helpers';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
+import ActivationBanner from '@/components/onboarding/activation-banner';
 import {
   OverviewFilterButton,
   OverviewFiltersButtons,
@@ -60,6 +61,7 @@ function AnalyticsProjectOverview({ projectId }: { projectId: string }) {
   useRangePageContext('overview');
   return (
     <div>
+      <ActivationBanner />
       <div className="sticky-header -top-px!">
         <div className="col gap-2 p-4">
           <div className="flex justify-between gap-2">

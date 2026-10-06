@@ -10,8 +10,10 @@ import {
 } from '@openpanel/constants';
 import type {
   IChartBreakdown,
+  IChartEventFilter,
   IChartEventItem,
   IChartLineType,
+  IChartMetric,
   IChartRange,
   IChartType,
   IInterval,
@@ -28,6 +30,9 @@ type InitialState = IReport & {
   ready: boolean;
   startDate: string | null;
   endDate: string | null;
+  // Always an array in state (initialState + setReport guarantee it) so the
+  // reducers below can push/map without optional-chaining.
+  globalFilters: IChartEventFilter[];
 };
 
 // First approach: define the initial state using that type
@@ -40,6 +45,7 @@ const initialState: InitialState = {
   lineType: 'monotone',
   interval: 'day',
   breakdowns: [],
+  globalFilters: [],
   series: [],
   range: '30d',
   startDate: null,
@@ -76,6 +82,7 @@ export const reportSlice = createSlice({
       return {
         ...state,
         ...action.payload,
+        globalFilters: action.payload.globalFilters ?? [],
         startDate: action.payload.startDate ?? null,
         endDate: action.payload.endDate ?? null,
         dirty: false,
@@ -174,6 +181,24 @@ export const reportSlice = createSlice({
       });
     },
 
+    // Global filters (applied to every event series in the report)
+    addGlobalFilter: (state, action: PayloadAction<IChartEventFilter>) => {
+      state.dirty = true;
+      state.globalFilters.push(action.payload);
+    },
+    removeGlobalFilter: (state, action: PayloadAction<{ id?: string }>) => {
+      state.dirty = true;
+      state.globalFilters = state.globalFilters.filter(
+        (filter) => filter.id !== action.payload.id,
+      );
+    },
+    changeGlobalFilter: (state, action: PayloadAction<IChartEventFilter>) => {
+      state.dirty = true;
+      state.globalFilters = state.globalFilters.map((filter) =>
+        filter.id === action.payload.id ? action.payload : filter,
+      );
+    },
+
     // Interval
     changeInterval: (state, action: PayloadAction<IInterval>) => {
       state.dirty = true;
@@ -184,6 +209,14 @@ export const reportSlice = createSlice({
     changeChartType: (state, action: PayloadAction<IChartType>) => {
       state.dirty = true;
       state.chartType = action.payload;
+
+      // The Metric card has always shown the total unique count. Existing
+      // reports are backfilled to 'count' by migration, so default a newly
+      // switched one the same way rather than leaving old and new metric
+      // reports showing different aggregations. The picker overrides it.
+      if (action.payload === 'metric') {
+        state.metric = 'count';
+      }
 
       // Initialize sankey options if switching to sankey
       if (action.payload === 'sankey' && !state.options) {
@@ -275,6 +308,11 @@ export const reportSlice = createSlice({
     changeUnit(state, action: PayloadAction<string | undefined>) {
       state.dirty = true;
       state.unit = action.payload || undefined;
+    },
+
+    changeMetric(state, action: PayloadAction<IChartMetric>) {
+      state.dirty = true;
+      state.metric = action.payload;
     },
 
     changeFunnelGroup(state, action: PayloadAction<string | undefined>) {
@@ -407,6 +445,9 @@ export const {
   addBreakdown,
   removeBreakdown,
   changeBreakdown,
+  addGlobalFilter,
+  removeGlobalFilter,
+  changeGlobalFilter,
   changeInterval,
   changeStartDate,
   changeEndDate,
@@ -418,6 +459,7 @@ export const {
   changePrevious,
   changeCriteria,
   changeUnit,
+  changeMetric,
   changeFunnelGroup,
   changeFunnelWindow,
   changeOptions,

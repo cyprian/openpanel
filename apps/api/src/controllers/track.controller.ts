@@ -1,20 +1,27 @@
 import { generateId } from '@openpanel/common';
 import { generateDeviceId, parseUserAgent } from '@openpanel/common/server';
 import {
+  convertClickhouseDateToJs,
   getProfileById,
   getSalts,
   groupBuffer,
   replayBuffer,
+  SESSION_TIMEOUT_MS,
+  sessionBuffer,
   upsertProfile,
 } from '@openpanel/db';
-import { type GeoLocation, getGeoLocation } from '@openpanel/geo';
+import {
+  type AsnInfo,
+  type GeoLocation,
+  getAsnInfo,
+  getGeoLocation,
+} from '@openpanel/geo';
 import {
   type EventsQueuePayloadIncomingEvent,
   getEventsGroupQueueShard,
   produceIncomingEvent,
   shouldUseKafka,
 } from '@openpanel/queue';
-import { getRedisCache } from '@openpanel/redis';
 import type {
   IAssignGroupPayload,
   IDecrementPayload,
@@ -27,6 +34,7 @@ import type {
 } from '@openpanel/validation';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { assocPath, pathOr, pick } from 'ramda';
+import { applyBotSuspicion, stripBotProperties } from '@/bots/suspicion';
 import { HttpError } from '@/utils/errors';
 import { getDeviceId } from '@/utils/ids';
 
@@ -69,6 +77,29 @@ function getIdentity(body: ITrackHandlerPayload): IIdentifyPayload | undefined {
   }
 
   return undefined;
+}
+
+const MAX_OVERRIDE_DEVICE_ID_LENGTH = 64;
+
+function sanitizeOverrideDeviceId(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > MAX_OVERRIDE_DEVICE_ID_LENGTH) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+// Resolve a caller-supplied device id from a track event's `properties.__deviceId`.
+export function getOverrideDeviceId(
+  body: ITrackHandlerPayload
+): string | undefined {
+  if (body.type !== 'track') {
+    return undefined;
+  }
+  return sanitizeOverrideDeviceId(body.payload?.properties?.__deviceId);
 }
 
 export function getTimestamp(
@@ -114,12 +145,18 @@ interface TrackContext {
   projectId: string;
   ip: string;
   ua?: string;
+  // Whitelisted subset (getStringHeaders) that ships with the queue payload.
   headers: Record<string, string | undefined>;
+  // Full raw request headers — bot signals need sec-ch-ua / sec-fetch-* /
+  // accept-language, which the whitelist above deliberately drops.
+  requestHeaders: FastifyRequest['headers'];
+  clientSecretAuth: boolean;
   timestamp: { value: number; isFromPast: boolean };
   identity?: IIdentifyPayload;
   deviceId: string;
   sessionId: string;
   geo: GeoLocation;
+  asnInfo: AsnInfo;
 }
 
 async function buildContext(
@@ -148,14 +185,16 @@ async function buildContext(
     validatedBody.payload.profileId = profileId;
   }
 
-  const overrideDeviceId =
-    validatedBody.type === 'track' &&
-    typeof validatedBody.payload?.properties?.__deviceId === 'string'
-      ? validatedBody.payload?.properties.__deviceId
-      : undefined;
+  const overrideDeviceId = getOverrideDeviceId(validatedBody);
 
-  // Get geo location (needed for track and identify)
-  const [geo, salts] = await Promise.all([getGeoLocation(ip), getSalts()]);
+  // Get geo location (needed for track and identify) + ASN (bot detection).
+  // Both hit the same MaxMind readers keyed on the same IP and are cached, so
+  // resolving them together adds no meaningful latency.
+  const [geo, asnInfo, salts] = await Promise.all([
+    getGeoLocation(ip),
+    getAsnInfo(ip),
+    getSalts(),
+  ]);
 
   const deviceIdResult = await getDeviceId({
     projectId,
@@ -163,6 +202,7 @@ async function buildContext(
     ua,
     salts,
     overrideDeviceId,
+    eventTimeMs: timestamp.timestamp,
   });
 
   return {
@@ -170,6 +210,8 @@ async function buildContext(
     ip,
     ua,
     headers,
+    requestHeaders: request.headers,
+    clientSecretAuth: request.clientSecretAuth ?? false,
     timestamp: {
       value: timestamp.timestamp,
       isFromPast: timestamp.isTimestampFromThePast,
@@ -178,6 +220,7 @@ async function buildContext(
     deviceId: deviceIdResult.deviceId,
     sessionId: deviceIdResult.sessionId,
     geo,
+    asnInfo,
   };
 }
 
@@ -188,6 +231,13 @@ async function handleTrack(
   const { projectId, deviceId, geo, headers, timestamp, sessionId } = context;
 
   const uaInfo = parseUserAgent(headers['user-agent'], payload.properties);
+  // Mark (never block) likely bot traffic with __bot / __bot_reasons props.
+  payload.properties = applyBotSuspicion(payload.properties, {
+    asnInfo: context.asnInfo,
+    headers: context.requestHeaders,
+    clientSecretAuth: context.clientSecretAuth,
+    isServer: uaInfo.isServer,
+  });
   const groupId = uaInfo.isServer
     ? payload.profileId
       ? `${projectId}:${payload.profileId}`
@@ -218,7 +268,7 @@ async function handleTrack(
 
   const partitionKey = groupId || generateId();
 
-  if (shouldUseKafka(projectId)) {
+  if (shouldUseKafka()) {
     promises.push(produceIncomingEvent(queueData, partitionKey));
   } else {
     promises.push(
@@ -238,6 +288,8 @@ async function handleIdentify(
   context: TrackContext
 ): Promise<void> {
   const { projectId, geo, ua } = context;
+  // Profiles must not carry forged bot verdicts either.
+  stripBotProperties(payload.properties);
   const uaInfo = parseUserAgent(ua, payload.properties);
   await upsertProfile({
     ...payload,
@@ -310,17 +362,19 @@ async function handleDecrement(
   await adjustProfileProperty(payload, context.projectId, -1);
 }
 
-async function handleReplay(
+// Replay only needs the server-issued session id (the SDK echoes it back). Trust
+// it — scoped to the authed project, unguessable, same trust level as event data.
+export async function handleReplay(
   payload: IReplayPayload,
-  context: TrackContext
+  { projectId, sessionId }: { projectId: string; sessionId: string | undefined }
 ): Promise<void> {
-  if (!context.sessionId) {
+  if (!sessionId) {
     throw new HttpError('Session ID is required for replay', { status: 400 });
   }
 
   const row = {
-    project_id: context.projectId,
-    session_id: context.sessionId,
+    project_id: projectId,
+    session_id: sessionId,
     chunk_index: payload.chunk_index,
     started_at: payload.started_at,
     ended_at: payload.ended_at,
@@ -395,9 +449,22 @@ export async function handler(
     case 'decrement':
       await handleDecrement(validatedBody.payload, context);
       break;
-    case 'replay':
-      await handleReplay(validatedBody.payload, context);
+    case 'replay': {
+      // BACKCOMPAT(replay-sessionid): TEMPORARY legacy branch, remove when new SDK is fully deployed
+      if (!validatedBody.payload.sessionId) {
+        await handleReplay(validatedBody.payload, {
+          projectId: context.projectId,
+          sessionId: context.sessionId,
+        });
+        break;
+      }
+
+      await handleReplay(validatedBody.payload, {
+        projectId: context.projectId,
+        sessionId: validatedBody.payload.sessionId,
+      });
       break;
+    }
     case 'group':
       await handleGroup(validatedBody.payload, context);
       break;
@@ -452,39 +519,45 @@ export async function fetchDeviceId(
   });
 
   try {
-    const multi = getRedisCache().multi();
-    multi.hget(
-      `bull:sessions:sessionEnd:${projectId}:${currentDeviceId}`,
-      'data'
-    );
-    multi.hget(
-      `bull:sessions:sessionEnd:${projectId}:${previousDeviceId}`,
-      'data'
-    );
-    const res = await multi.exec();
-    if (res?.[0]?.[1]) {
-      const data = JSON.parse(res?.[0]?.[1] as string);
-      const sessionId = data.payload.sessionId;
+    const [current, previous] = await Promise.all([
+      sessionBuffer.getExistingSession({
+        projectId,
+        deviceId: currentDeviceId,
+      }),
+      sessionBuffer.getExistingSession({
+        projectId,
+        deviceId: previousDeviceId,
+      }),
+    ]);
+
+    // Blob has no TTL — only treat the session as "current" if its last
+    // event is within the idle window. Otherwise the SDK should ask the
+    // server to start a fresh session id on the next event.
+    const now = Date.now();
+    const isLive = (s: typeof current) =>
+      !!s &&
+      now - convertClickhouseDateToJs(s.ended_at).getTime() <
+        SESSION_TIMEOUT_MS;
+
+    if (current && isLive(current)) {
       return reply.status(200).send({
         deviceId: currentDeviceId,
-        sessionId,
+        sessionId: current.id,
         message: 'current session exists for this device id',
       });
     }
 
-    if (res?.[1]?.[1]) {
-      const data = JSON.parse(res?.[1]?.[1] as string);
-      const sessionId = data.payload.sessionId;
+    if (previous && isLive(previous)) {
       return reply.status(200).send({
         deviceId: previousDeviceId,
-        sessionId,
+        sessionId: previous.id,
         message: 'previous session exists for this device id',
       });
     }
   } catch (error) {
     request.log.error(
       { err: error },
-      'Error getting session end GET /track/device-id',
+      'Error getting session end GET /track/device-id'
     );
   }
 

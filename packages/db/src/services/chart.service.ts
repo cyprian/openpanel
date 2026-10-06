@@ -12,6 +12,7 @@ import sqlstring from 'sqlstring';
 import { formatClickhouseDate, TABLE_NAMES } from '../clickhouse/client';
 import { db } from '../prisma-client';
 import { createSqlBuilder } from '../sql-builder';
+import { buildTypedClause, hasTypedCast, isTypedOperator } from './filter-cast';
 
 // Top-level columns on the events table. Derived from the migration in
 // packages/db/code-migrations/3-init-ch.ts (+ revenue added in 6-add-revenue-
@@ -283,6 +284,8 @@ export function getGroupPropertySelect(property: string): string {
 
 // Returns the SELECT expression when querying the profiles table directly (no join alias).
 // Use for fetching distinct values for profile.* properties.
+// Lists the same profiles columns as PROFILE_COLUMNS in filter-where.service.ts,
+// which resolves profile.* on the filter side; keep the two in sync.
 export function getProfilePropertySelect(property: string): string {
   const withoutPrefix = property.replace(/^profile\./, '');
   if (withoutPrefix === 'id') {
@@ -376,7 +379,87 @@ export function getSelectPropertyKey(
     )})))`;
   }
 
-  return `${aliasPrefix}${match}['${property.replace(new RegExp(`^${match}.`), '')}']`;
+  return `${aliasPrefix}${match}[${sqlstring.escape(
+    property.slice(match.length + 1)
+  )}]`;
+}
+
+
+// --- profile-property CTE narrowing (perf) ---------------------------------
+// profile.properties.<key> refs render as Map lookups `profile.properties['<key>']`.
+// Pulling the whole `properties` Map into the profile CTE makes the LEFT ANY
+// JOIN hash carry the full Map per profile — roughly a kilobyte each on real
+// data — and OOMs at scale. Instead we project ONLY the referenced keys as
+// scalar columns in the CTE and rewrite the refs to those columns — identical
+// results at a fraction of the memory. Wildcard refs (mapExtractKeyLike) still
+// need the full Map, so those fall back to selecting it.
+
+const PROFILE_PROP_PREFIX = 'profile.properties.';
+
+export function collectProfilePropertyKeys(refs: { name: string }[]): {
+  keys: string[];
+  needsFullMap: boolean;
+} {
+  const keys = new Set<string>();
+  let needsFullMap = false;
+  for (const { name } of refs) {
+    if (!name.startsWith(PROFILE_PROP_PREFIX)) {
+      continue;
+    }
+    // Wildcard refs render as mapExtractKeyLike over the whole Map.
+    if (name.includes('*')) {
+      needsFullMap = true;
+      continue;
+    }
+    const key = name.slice(PROFILE_PROP_PREFIX.length);
+    // A backtick or backslash in the key can't be embedded in the
+    // backtick-quoted scalar alias. Such keys are never narrowed: the full
+    // Map stays selected and their refs keep the original Map access.
+    if (/[`\\]/.test(key)) {
+      needsFullMap = true;
+      continue;
+    }
+    keys.add(key);
+  }
+  return { keys: Array.from(keys), needsFullMap };
+}
+
+// The profile-CTE SELECT expression for the `properties` field: one scalar
+// column per referenced key, plus the full Map only when a wildcard ref needs
+// it (or when nothing specific was referenced).
+export function profilePropertiesCteSelect(
+  keys: string[],
+  needsFullMap: boolean,
+): string {
+  const cols = keys.map(
+    (k) => `properties[${sqlstring.escape(k)}] as \`profile.properties.${k}\``,
+  );
+  if (needsFullMap || cols.length === 0) {
+    cols.push('properties as "profile.properties"');
+  }
+  return cols.join(', ');
+}
+
+// Rewrite `profile.properties['<key>']` -> `` `profile.properties.<key>` ``
+// for the narrowed keys. Matches the raw render from getSelectPropertyKey /
+// the filter builders; never matches the CTE's own `properties['<key>']`,
+// which has no `profile.` prefix. No-op when keys is empty.
+// The Map-access text a `profile.properties.<key>` ref renders as. Must stay
+// identical to what `getSelectPropertyKey` emits for that key: a key whose
+// quotes are escaped there but not here would be searched for in a form the
+// query never contains, leaving the ref pointing at a Map the CTE dropped.
+function profilePropertyRef(key: string): string {
+  return `profile.properties[${sqlstring.escape(key)}]`;
+}
+
+export function rewriteProfilePropertyRefs(sql: string, keys: string[]): string {
+  let out = sql;
+  for (const k of keys) {
+    out = out
+      .split(profilePropertyRef(k))
+      .join(`\`profile.properties.${k}\``);
+  }
+  return out;
 }
 
 export async function getChartSql({
@@ -427,6 +510,14 @@ export async function getChartSql({
   const cohortIds = collectBreakdownCohortIds(breakdowns);
   const cohortMetadata = await fetchCohortsMetadata(cohortIds);
 
+  const profileProps = collectProfilePropertyKeys([
+    ...event.filters,
+    ...breakdowns,
+    // Math metrics (property_sum/avg/min/max) reference event.property too —
+    // missing it here would strip the Map the metric still reads from.
+    ...(event.property ? [{ name: event.property }] : []),
+  ]);
+
   // Add CTE + JOIN for "all cohorts" breakdown
   if (hasAllCohortsBreakdown) {
     addCte('_all_cohorts', buildAllCohortsMembershipQuery(projectId));
@@ -460,6 +551,10 @@ export async function getChartSql({
   const anyBreakdownOnProfile = breakdowns.some((breakdown) =>
     breakdown.name.startsWith('profile.')
   );
+  // Math metrics (property_sum/avg/min/max) can target a profile property
+  // too — the join must exist for the metric alone, not only for filters
+  // and breakdowns.
+  const anyMetricOnProfile = !!event.property?.startsWith('profile.');
   const anyFilterOnGroup = event.filters.some((filter) =>
     filter.name.startsWith('group.')
   );
@@ -481,16 +576,6 @@ export async function getChartSql({
     sb.joins.groups = 'ARRAY JOIN groups AS _group_id';
     sb.joins.groups_table = 'LEFT ANY JOIN _g ON _g.id = _group_id';
   }
-
-  // Build WHERE clause without the bar filter (for use in subqueries and CTEs)
-  // Define this early so we can use it in CTE definitions
-  const getWhereWithoutBar = () => {
-    const whereWithoutBar = { ...sb.where };
-    delete whereWithoutBar.bar;
-    return Object.keys(whereWithoutBar).length
-      ? `WHERE ${join(whereWithoutBar, ' AND ')}`
-      : '';
-  };
 
   // Collect all profile fields used in filters and breakdowns
   // Extract top-level field names (e.g., 'properties' from 'profile.properties.os')
@@ -542,24 +627,46 @@ export async function getChartSql({
         }
       });
 
+    // Collect from the math metric
+    if (event.property?.startsWith('profile.')) {
+      const fieldName = event.property.replace('profile.', '').split('.')[0];
+      if (fieldName && fieldName === 'properties') {
+        fields.add('properties');
+      } else if (
+        fieldName &&
+        [
+          'email',
+          'first_name',
+          'last_name',
+          'created_at',
+          'last_seen_at',
+        ].includes(fieldName)
+      ) {
+        fields.add(fieldName);
+      }
+    }
+
     return Array.from(fields);
   };
 
   // Create profiles CTE if profiles are needed (to avoid duplicating the heavy profile join)
   // Only select the fields that are actually used
   const profilesJoinRef =
-    anyFilterOnProfile || anyBreakdownOnProfile
+    anyFilterOnProfile || anyBreakdownOnProfile || anyMetricOnProfile
       ? 'LEFT ANY JOIN profile ON profile.id = profile_id'
       : '';
 
-  if (anyFilterOnProfile || anyBreakdownOnProfile) {
+  if (anyFilterOnProfile || anyBreakdownOnProfile || anyMetricOnProfile) {
     const profileFields = getProfileFields();
     const selectFields = profileFields.map((field) => {
       if (field === 'id') {
         return 'id as "profile.id"';
       }
       if (field === 'properties') {
-        return 'properties as "profile.properties"';
+        return profilePropertiesCteSelect(
+          profileProps.keys,
+          profileProps.needsFullMap,
+        );
       }
       if (field === 'email') {
         return 'email as "profile.email"';
@@ -710,101 +817,45 @@ export async function getChartSql({
         ' AND '
       )}
         ORDER BY profile_id, created_at DESC
-      ) as subQuery`;
+      ) as e`;
     sb.joins = {};
     // Filters were already applied inside the subquery, and the outer query
-    // selects from `subQuery` — the `e` alias used in sb.where is no longer
-    // in scope, so re-emitting WHERE would produce
-    // "Unknown identifier `e.name`". Clear it.
+    // selects from the subquery aliased `e` — the `e` alias used in sb.where
+    // still resolves to it (the subquery does `SELECT * FROM events e`), but
+    // re-emitting WHERE here would just re-apply the same filters a second
+    // time. Clear it.
     sb.where = {};
 
-    const sql = `${getWith()}${getSelect()} ${getFrom()} ${getJoins()} ${getWhere()} ${getGroupBy()} ${getOrderBy()} ${getFill()}`;
+    const sql = rewriteProfilePropertyRefs(
+      `${getWith()}${getSelect()} ${getFrom()} ${getJoins()} ${getWhere()} ${getGroupBy()} ${getOrderBy()} ${getFill()}`,
+      profileProps.keys,
+    );
     console.log('-- Report --');
     console.log(sql.replaceAll(/[\n\r]/g, ' '));
     console.log('-- End --');
     return sql;
   }
 
-  // Note: The profile CTE (if it exists) is available in subqueries, so we can reference it directly.
-  // Cohort CTEs cannot be referenced from nested CTEs in ClickHouse, so we inline them.
-  const subqueryGroupJoins = needsGroupArrayJoin
-    ? 'ARRAY JOIN groups AS _group_id LEFT ANY JOIN _g ON _g.id = _group_id '
-    : '';
-  const inlineCohortJoinsSql = cohortIds
-    .map((id) => buildInlineCohortJoin(id, projectId, 'e'))
-    .join(' ');
-  // Inline all-cohorts join for use in _uc CTE (can't reference CTEs from nested CTEs)
-  const inlineAllCohortsJoin = hasAllCohortsBreakdown
-    ? `INNER JOIN (${buildAllCohortsMembershipQuery(projectId)}) AS _all_cohorts ON _all_cohorts.profile_id = e.profile_id `
-    : '';
+  // Single-pass total_count: aggregate uniqState(profile_id) alongside the
+  // series in the same scan, then merge the per-group states with a window
+  // aggregate in an outer select — PARTITION BY the breakdown labels, or an
+  // empty partition for the global total. The previous shape re-ran the
+  // chart's entire WHERE in a second full scan (a `_uc` CTE joined back per
+  // label / injected as a scalar subquery), doubling every chart's read
+  // cost. uniq states merge losslessly, so the result matches the two-scan
+  // form exactly. (The old _uc scan nominally excluded a `bar` filter, but
+  // nothing sets sb.where.bar anymore — the exclusion was dead code.)
+  sb.select.uc_state = 'uniqState(profile_id) as _uc_state';
 
-  if (breakdowns.length > 0) {
-    // Pre-compute unique counts per breakdown group in a CTE, then JOIN it.
-    // We can't use a correlated subquery because:
-    // 1. ClickHouse expands label_X aliases to their underlying expressions,
-    //    which resolve in the subquery's scope, making the condition a tautology.
-    // 2. Correlated subqueries aren't supported on distributed/remote tables.
-    const ucSelectParts: string[] = breakdowns.map((breakdown, index) => {
-      if (isAllCohortsBreakdown(breakdown.name)) {
-        return `${buildAllCohortsLabelExpr(allCohorts)} as _uc_label_${index + 1}`;
-      }
-      const bId = extractCohortId(breakdown.name);
-      const bName = bId ? cohortMetadata.get(bId)?.name : undefined;
-      const propertyKey = getSelectPropertyKey(
-        breakdown.name,
-        projectId,
-        bId ?? undefined,
-        bName,
-        'e',
-      );
-      return `${propertyKey} as _uc_label_${index + 1}`;
-    });
-    ucSelectParts.push('uniq(profile_id) as total_count');
+  const totalCountPartition = breakdowns
+    .map((_, index) => `label_${index + 1}`)
+    .join(', ');
+  const totalCountSelect = `uniqMerge(_uc_state) OVER (${totalCountPartition ? `PARTITION BY ${totalCountPartition}` : ''}) as total_count`;
 
-    const ucGroupByParts = breakdowns.map(
-      (_, index) => `_uc_label_${index + 1}`
-    );
-
-    const ucWhere = getWhereWithoutBar();
-
-    addCte(
-      '_uc',
-      `SELECT ${ucSelectParts.join(', ')} FROM ${TABLE_NAMES.events} e ${subqueryGroupJoins}${profilesJoinRef ? `${profilesJoinRef} ` : ''}${inlineCohortJoinsSql ? `${inlineCohortJoinsSql} ` : ''}${inlineAllCohortsJoin}${ucWhere} GROUP BY ${ucGroupByParts.join(', ')}`
-    );
-
-    const ucJoinConditions = breakdowns
-      .map((b, index) => {
-        if (isAllCohortsBreakdown(b.name)) {
-          return `_uc._uc_label_${index + 1} = ${buildAllCohortsLabelExpr(allCohorts)}`;
-        }
-        const bId = extractCohortId(b.name);
-        const bName = bId ? cohortMetadata.get(bId)?.name : undefined;
-        const propertyKey = getSelectPropertyKey(
-          b.name,
-          projectId,
-          bId ?? undefined,
-          bName,
-          'e',
-        );
-        return `_uc._uc_label_${index + 1} = ${propertyKey}`;
-      })
-      .join(' AND ');
-
-    sb.joins.unique_counts = `LEFT ANY JOIN _uc ON ${ucJoinConditions}`;
-    sb.select.total_unique_count = 'any(_uc.total_count) as total_count';
-  } else {
-    const ucWhere = getWhereWithoutBar();
-
-    addCte(
-      '_uc',
-      `SELECT uniq(profile_id) as total_count FROM ${TABLE_NAMES.events} e ${subqueryGroupJoins}${profilesJoinRef ? `${profilesJoinRef} ` : ''}${inlineCohortJoinsSql ? `${inlineCohortJoinsSql} ` : ''}${ucWhere}`
-    );
-
-    sb.select.total_unique_count =
-      '(SELECT total_count FROM _uc) as total_count';
-  }
-
-  const sql = `${getWith()}${getSelect()} ${getFrom()} ${getJoins()} ${getWhere()} ${getGroupBy()} ${getOrderBy()} ${getFill()}`;
+  const sql = rewriteProfilePropertyRefs(
+    `${getWith()}SELECT * EXCEPT (_uc_state), ${totalCountSelect} FROM (${getSelect()} ${getFrom()} ${getJoins()} ${getWhere()} ${getGroupBy()}) ${getOrderBy()} ${getFill()}`,
+    profileProps.keys,
+  );
   console.log('-- Report --');
   console.log(sql.replaceAll(/[\n\r]/g, ' '));
   console.log('-- End --');
@@ -845,6 +896,14 @@ export async function getAggregateChartSql({
   const cohortIds = collectBreakdownCohortIds(breakdowns);
   const cohortMetadata = await fetchCohortsMetadata(cohortIds);
 
+  const profileProps = collectProfilePropertyKeys([
+    ...event.filters,
+    ...breakdowns,
+    // Math metrics (property_sum/avg/min/max) reference event.property too —
+    // missing it here would strip the Map the metric still reads from.
+    ...(event.property ? [{ name: event.property }] : []),
+  ]);
+
   // Add CTE + JOIN for "all cohorts" breakdown
   if (hasAllCohortsBreakdown) {
     addCte('_all_cohorts', buildAllCohortsMembershipQuery(projectId));
@@ -878,6 +937,10 @@ export async function getAggregateChartSql({
   const anyBreakdownOnProfile = breakdowns.some((breakdown) =>
     breakdown.name.startsWith('profile.')
   );
+  // Math metrics (property_sum/avg/min/max) can target a profile property
+  // too — the join must exist for the metric alone, not only for filters
+  // and breakdowns.
+  const anyMetricOnProfile = !!event.property?.startsWith('profile.');
   const anyFilterOnGroup = event.filters.some((filter) =>
     filter.name.startsWith('group.')
   );
@@ -949,23 +1012,45 @@ export async function getAggregateChartSql({
         }
       });
 
+    // Collect from the math metric
+    if (event.property?.startsWith('profile.')) {
+      const fieldName = event.property.replace('profile.', '').split('.')[0];
+      if (fieldName && fieldName === 'properties') {
+        fields.add('properties');
+      } else if (
+        fieldName &&
+        [
+          'email',
+          'first_name',
+          'last_name',
+          'created_at',
+          'last_seen_at',
+        ].includes(fieldName)
+      ) {
+        fields.add(fieldName);
+      }
+    }
+
     return Array.from(fields);
   };
 
   // Create profiles CTE if profiles are needed
   const profilesJoinRef =
-    anyFilterOnProfile || anyBreakdownOnProfile
+    anyFilterOnProfile || anyBreakdownOnProfile || anyMetricOnProfile
       ? 'LEFT ANY JOIN profile ON profile.id = profile_id'
       : '';
 
-  if (anyFilterOnProfile || anyBreakdownOnProfile) {
+  if (anyFilterOnProfile || anyBreakdownOnProfile || anyMetricOnProfile) {
     const profileFields = getProfileFields();
     const selectFields = profileFields.map((field) => {
       if (field === 'id') {
         return 'id as "profile.id"';
       }
       if (field === 'properties') {
-        return 'properties as "profile.properties"';
+        return profilePropertiesCteSelect(
+          profileProps.keys,
+          profileProps.needsFullMap,
+        );
       }
       if (field === 'email') {
         return 'email as "profile.email"';
@@ -1082,10 +1167,16 @@ export async function getAggregateChartSql({
         ' AND '
       )}
         ORDER BY profile_id, created_at DESC
-      ) as subQuery`;
+      ) as e`;
     sb.joins = {};
+    // Filters were already applied inside the subquery. A profile or group
+    // filter's join (and any ARRAY JOIN alias like _group_id) is scoped to
+    // it and is gone now that sb.joins is cleared, so re-emitting WHERE here
+    // would produce "Unknown identifier `_group_id`"/`profile.*`. Clear it,
+    // matching getChartSql.
+    sb.where = {};
 
-    const sql = getSql();
+    const sql = rewriteProfilePropertyRefs(getSql(), profileProps.keys);
     console.log('-- Aggregate Chart --');
     console.log(sql.replaceAll(/[\n\r]/g, ' '));
     console.log('-- End --');
@@ -1100,7 +1191,7 @@ export async function getAggregateChartSql({
     sb.limit = limit;
   }
 
-  const sql = getSql();
+  const sql = rewriteProfilePropertyRefs(getSql(), profileProps.keys);
   console.log('-- Aggregate Chart --');
   console.log(sql.replaceAll(/[\n\r]/g, ' '));
   console.log('-- End --');
@@ -1188,6 +1279,10 @@ export function getEventFiltersWhereClause(
     // Handle group. prefixed filters (requires ARRAY JOIN + _g JOIN in query)
     if (name.startsWith('group.') && projectId) {
       const whereFrom = getGroupPropertySql(name);
+      if (hasTypedCast(filter.type) && isTypedOperator(operator)) {
+        where[id] = buildTypedClause(whereFrom, operator, value, filter.type);
+        return;
+      }
       switch (operator) {
         case 'is': {
           if (value.length === 1) {
@@ -1259,6 +1354,17 @@ export function getEventFiltersWhereClause(
       );
       const isWildcard = propertyKey.includes('%');
       const whereFrom = propertyKey;
+
+      // Typed cast (number/date/datetime/boolean) short-circuit. Casts both the
+      // column and each value so e.g. `>= '2019-01-01'` compares as dates
+      // instead of crashing `toFloat64('2019-01-01')`. Untyped/string filters
+      // fall through to the legacy switch below.
+      if (hasTypedCast(filter.type) && isTypedOperator(operator)) {
+        where[id] = isWildcard
+          ? `arrayExists(x -> ${buildTypedClause('x', operator, value, filter.type)}, ${whereFrom})`
+          : buildTypedClause(whereFrom, operator, value, filter.type);
+        return;
+      }
 
       switch (operator) {
         case 'is': {
@@ -1473,6 +1579,12 @@ export function getEventFiltersWhereClause(
       // that OverviewService.getRawWhereClause already vets via its
       // WHITELISTED_FILTERS pre-pass.
       if (tableScope === 'events' && !EVENT_TOP_LEVEL_COLUMNS.has(name)) {
+        return;
+      }
+      // Typed cast short-circuit (see property branch above). Supersedes the
+      // `isNumericColumn` auto-detect when the user declared an explicit type.
+      if (hasTypedCast(filter.type) && isTypedOperator(operator)) {
+        where[id] = buildTypedClause(name, operator, value, filter.type);
         return;
       }
       switch (operator) {

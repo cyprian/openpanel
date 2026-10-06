@@ -11,6 +11,7 @@ import {
 } from '../clickhouse/client';
 import { clix } from '../clickhouse/query-builder';
 import { createSqlBuilder } from '../sql-builder';
+import { resolveMaxLookbackDays } from './lookback';
 import { buildFilterWhere } from './filter-where.service';
 import { getProfilesCached, type IServiceProfile } from './profile.service';
 
@@ -50,9 +51,6 @@ export interface IClickhouseSession {
   utm_content: string;
   utm_term: string;
   revenue: number;
-  // CollapsingMergeTree marker: +1 = current state, -1 = cancel a prior +1.
-  // The session-buffer emits both +1 (new) and -1 (old) rows per update so
-  // CH can collapse intermediate states.
   sign: 1 | -1;
   version: number;
   // Dynamically added
@@ -175,7 +173,11 @@ export async function getSessionList(options: GetSessionListOptions) {
   sb.limit = take;
   sb.where.projectId = `project_id = ${sqlstring.escape(projectId)}`;
 
-  const MAX_DATE_INTERVAL_IN_DAYS = 365;
+  // Deployment-tunable ceiling for the empty-result lookback (see lookback.ts).
+  const MAX_DATE_INTERVAL_IN_DAYS = resolveMaxLookbackDays(
+    'SESSION_LIST_MAX_LOOKBACK_DAYS',
+    365,
+  );
   // Cap the date interval to prevent infinity
   const safeDateIntervalInDays = Math.min(
     dateIntervalInDays,
@@ -213,7 +215,7 @@ export async function getSessionList(options: GetSessionListOptions) {
         groupsExpr: 'groups',
         startDate,
         endDate,
-      }),
+      })
     );
   }
 
@@ -246,7 +248,7 @@ export async function getSessionList(options: GetSessionListOptions) {
   });
 
   sb.select.has_replay = `toBool(src.session_id != '') as hasReplay`;
-  sb.joins.has_replay = `LEFT JOIN (SELECT DISTINCT session_id FROM ${TABLE_NAMES.session_replay_chunks} WHERE project_id = ${sqlstring.escape(projectId)} AND started_at > now() - INTERVAL ${dateIntervalInDays} DAY) AS src ON src.session_id = id`;
+  sb.joins.has_replay = `LEFT JOIN (SELECT DISTINCT session_id FROM ${TABLE_NAMES.session_replay_chunks} WHERE project_id = ${sqlstring.escape(projectId)} AND started_at > now() - INTERVAL ${safeDateIntervalInDays} DAY) AS src ON src.session_id = id`;
 
   const sql = getSql();
   const data = await chQuery<
@@ -338,7 +340,7 @@ export async function getSessionsCount({
         groupsExpr: 'groups',
         startDate,
         endDate,
-      }),
+      })
     );
   }
 
@@ -481,7 +483,7 @@ export interface QuerySessionsInput {
 }
 
 export async function querySessionsCore(
-  input: QuerySessionsInput,
+  input: QuerySessionsInput
 ): Promise<IClickhouseSession[]> {
   const builder = clix(ch)
     .select<IClickhouseSession>([])
@@ -525,7 +527,10 @@ export async function querySessionsCore(
     builder.where('browser', '=', input.browser);
   }
 
-  const { startDate: start, endDate: end } = resolveDateRange(input.startDate, input.endDate);
+  const { startDate: start, endDate: end } = resolveDateRange(
+    input.startDate,
+    input.endDate
+  );
 
   builder.where('created_at', 'BETWEEN', [
     clix.datetime(start),

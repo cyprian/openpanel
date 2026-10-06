@@ -8,6 +8,7 @@ import {
   getReferrerWithQuery,
   parseReferrer,
 } from '@openpanel/common/server';
+import { safeFetchStream } from '@openpanel/common/server/safe-fetch';
 import { formatClickhouseDate, type IClickhouseEvent } from '@openpanel/db';
 import type { ILogger } from '@openpanel/logger';
 import type { IUmamiImportConfig } from '@openpanel/validation';
@@ -15,6 +16,16 @@ import { parse } from 'csv-parse';
 import { assocPath } from 'ramda';
 import { z } from 'zod';
 import { BaseImportProvider } from '../base-provider';
+
+/**
+ * Bounds for a remote Umami export. `parseRemoteFile` has always accepted these
+ * but `parseSource` never passed them, so every guard inside it was dead code
+ * and the download was unbounded.
+ */
+const MAX_IMPORT_BYTES = 2_000_000_000; // 2 GB
+const MAX_IMPORT_ROWS = 50_000_000;
+/** Bounds the connection and redirect walk only, not the download itself. */
+const IMPORT_CONNECT_TIMEOUT_MS = 30_000;
 
 export const zUmamiRawEvent = z.object({
   // Required fields
@@ -76,7 +87,10 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
   }
 
   async *parseSource(): AsyncGenerator<UmamiRawEvent, void, unknown> {
-    yield* this.parseRemoteFile(this.config.fileUrl);
+    yield* this.parseRemoteFile(this.config.fileUrl, {
+      maxBytes: MAX_IMPORT_BYTES,
+      maxRows: MAX_IMPORT_ROWS,
+    });
   }
 
   private async *parseRemoteFile(
@@ -89,6 +103,7 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
   ): AsyncGenerator<UmamiRawEvent, void, unknown> {
     const { signal, maxBytes, maxRows } = opts;
     const controller = new AbortController();
+    let closeRemote: (() => Promise<void>) | undefined;
 
     // Link to caller's signal for cancellation
     if (signal) {
@@ -97,15 +112,27 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
       });
     }
 
-    const res = await fetch(url, { signal: controller.signal });
-    if (!(res.ok && res.body)) {
-      throw new Error(
-        `Failed to fetch remote file: ${res.status} ${res.statusText}`
+    // safeFetchStream resolves the host, refuses non-public addresses, pins the
+    // socket to the address it validated and re-checks every redirect hop, so a
+    // caller-supplied fileUrl cannot reach loopback, RFC1918 or cloud metadata
+    // (GHSA-cj2r-3x54-88h7).
+    const res = await safeFetchStream(url, {
+      signal: controller.signal,
+      timeoutMs: IMPORT_CONNECT_TIMEOUT_MS,
+    });
+    closeRemote = res.close;
+
+    if (!(res.status >= 200 && res.status < 300 && res.body)) {
+      // Deliberately opaque: the status of an internal host is exactly the
+      // oracle this endpoint used to hand back through Import.errorMessage.
+      this.logger?.error(
+        { status: res.status, finalUrl: res.finalUrl },
+        'Failed to fetch remote import file'
       );
+      throw new Error('Failed to fetch remote file');
     }
 
     const contentType = res.headers.get('content-type') || '';
-    const contentEnc = res.headers.get('content-encoding') || '';
     const contentLen = Number(res.headers.get('content-length') ?? 0);
 
     if (
@@ -123,33 +150,52 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
       );
     }
 
-    const looksGzip =
-      /\.gz($|\?)/i.test(url) ||
-      /gzip/i.test(contentEnc) ||
-      /application\/gzip/i.test(contentType);
-    const looksBr = /br/i.test(contentEnc) || /\.br($|\?)/i.test(url);
-
     // WHATWG -> Node stream
-    const body = Readable.fromWeb(res.body as any);
+    const rawBody = Readable.fromWeb(res.body as any);
 
-    // Optional size guard during stream
+    // Detect gzip by peeking the first chunk's magic bytes (0x1f 0x8b) rather
+    // than trusting Content-Encoding/Type. fetch/undici already decompresses
+    // transport-level gzip/br while leaving the header in place; trusting it
+    // would gunzip already-plain bytes and throw "incorrect header check".
+    const iterator = rawBody[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    const firstChunk = first.done ? undefined : (first.value as Buffer);
+
+    const isGzip =
+      !!firstChunk &&
+      firstChunk.length >= 2 &&
+      firstChunk[0] === 0x1f &&
+      firstChunk[1] === 0x8b;
+    const isBrotli = !isGzip && /\.br($|\?)/i.test(url);
+
+    // Replay the peeked chunk and enforce the optional size guard inline.
     let seenBytes = 0;
-    if (maxBytes) {
-      body.on('data', (chunk: Buffer) => {
+    async function* sourceChunks() {
+      if (firstChunk !== undefined) {
+        seenBytes += firstChunk.length;
+        yield firstChunk;
+      }
+      for (
+        let next = await iterator.next();
+        !next.done;
+        next = await iterator.next()
+      ) {
+        const chunk = next.value as Buffer;
         seenBytes += chunk.length;
-        if (seenBytes > maxBytes) {
-          controller.abort();
-          body.destroy(
-            new Error(`Stream exceeded size limit (${seenBytes} > ${maxBytes})`)
+        if (maxBytes && seenBytes > maxBytes) {
+          throw new Error(
+            `Stream exceeded size limit (${seenBytes} > ${maxBytes})`
           );
         }
-      });
+        yield chunk;
+      }
     }
+    const body = Readable.from(sourceChunks());
 
     // Build decode chain (gzip/brotli -> CSV parser)
-    const decompress = looksGzip
+    const decompress = isGzip
       ? createGunzip()
-      : looksBr
+      : isBrotli
         ? createBrotliDecompress()
         : null;
 
@@ -188,13 +234,13 @@ export class UmamiProvider extends BaseImportProvider<UmamiRawEvent> {
         yield record as UmamiRawEvent;
       }
     } catch (err) {
-      throw new Error(
-        `Failed to parse remote file from ${url}: ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
+      this.logger?.error({ err, url }, 'Failed to parse remote import file');
+      throw new Error('Failed to parse remote file');
     } finally {
       controller.abort(); // ensure fetch stream is torn down
+      await closeRemote?.().catch(() => {
+        // best effort
+      });
     }
   }
 
